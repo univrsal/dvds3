@@ -104,12 +104,15 @@ static void dvd_source_update(void* data, obs_data_t* settings)
 
 static void dvd_source_defaults(obs_data_t* settings)
 {
+	
 	obs_data_set_default_int(settings, S_SOURCE_CX, 640);
 	obs_data_set_default_int(settings, S_SOURCE_CY, 480);
 	obs_data_set_default_double(settings, S_SCALE, 1.0);
 	obs_data_set_default_double(settings, S_SPEED, 50.0);
 	obs_data_set_default_bool(settings, S_COLOR, true);
-	obs_data_set_default_string(settings, "file", obs_module_file("dvd.png"));
+	char* path = obs_module_file("dvd.png");
+	obs_data_set_default_string(settings, "file", path);
+	bfree(path);
 }
 
 static void dvd_source_destroy(void* data)
@@ -120,8 +123,8 @@ static void dvd_source_destroy(void* data)
 
 	obs_source_remove(context->color_filter);
 	obs_source_release(context->color_filter);
-
-	bfree(context);
+	
+	bfree(data);
 }
 
 static uint32_t dvd_source_getwidth(void* data)
@@ -188,6 +191,7 @@ static void dvd_source_tick(void* data, float seconds)
 				val = -180.f + 45.f;
 			obs_data_set_double(settings, "hue_shift", val);
 			obs_source_update(context->color_filter, settings);
+			obs_data_release(settings);
 		}
 	}
 }
@@ -269,9 +273,8 @@ static void* dvd_source_create(obs_data_t* settings, obs_source_t* source)
 	context->color_filter = obs_source_create("color_filter", "dvd-filter", settings, NULL);
 
 	obs_source_add_active_child(context->source, context->image_source);
+	obs_source_add_active_child(context->source, context->color_filter);
 	obs_source_filter_add(context->image_source, context->color_filter);
-	
-	dvd_source_properties(context);
 	
 	obs_source_update(context->image_source, settings);
 	dvd_source_update(context, settings);
