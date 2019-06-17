@@ -10,6 +10,10 @@ if(UNIX)
     add_definitions(-DUNIX=1)
 endif()
 
+if(APPLE)
+    add_definitions(-DMAC_OS=1)
+endif()
+
 set(dvd-screensaver_SOURCES
     src/dvd.c)
 

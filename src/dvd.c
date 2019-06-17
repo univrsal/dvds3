@@ -1,4 +1,4 @@
-/* This file is part of dvds3
+* This file is part of dvds3
  * DVD screen saver source
  *
  * This program is free software: you can redistribute it and/or modify
@@ -120,10 +120,10 @@ static void dvd_source_destroy(void* data)
 	struct dvd_source* context = data;
 	obs_source_remove(context->image_source);
 	obs_source_release(context->image_source);
-
+#ifndef MAC_OS
 	obs_source_remove(context->color_filter);
 	obs_source_release(context->color_filter);
-	
+#endif
 	bfree(data);
 }
 
@@ -182,7 +182,7 @@ static void dvd_source_tick(void* data, float seconds)
 		{
 			context->pos.y += d_y;
 		}
-
+#ifndef MAC_OS
 		if (bounce) /* Shift color for each bounce */
 		{
 			obs_data_t* settings = obs_source_get_settings(context->color_filter);
@@ -193,6 +193,7 @@ static void dvd_source_tick(void* data, float seconds)
 			obs_source_update(context->color_filter, settings);
 			obs_data_release(settings);
 		}
+#endif
 	}
 }
 
@@ -245,7 +246,9 @@ static obs_properties_t* dvd_source_properties(void* data)
 		obs_properties_t* props = obs_source_properties(context->image_source);
 		if (props)
 		{
+#ifndef MAC_OS
 			obs_properties_add_bool(props, S_COLOR, T_COLOR);
+#endif
 			obs_properties_add_int(props, S_SOURCE_CX, T_SOURCE_CX, 25, 0xffff, 1);
 			obs_properties_add_int(props, S_SOURCE_CY, T_SOURCE_CY, 25, 0xffff, 1);
 			obs_properties_add_float_slider(props, S_SPEED, T_SPEED, 0.10f, 1000.f, 0.25);
@@ -270,12 +273,14 @@ static void* dvd_source_create(obs_data_t* settings, obs_source_t* source)
 	struct dvd_source* context = bzalloc(sizeof(struct dvd_source));
 	context->source = source;
 	context->image_source = obs_source_create("image_source", "dvd-image", settings, NULL);
+#ifndef MAC_OS
 	context->color_filter = obs_source_create("color_filter", "dvd-filter", settings, NULL);
-
-	obs_source_add_active_child(context->source, context->image_source);
 	obs_source_add_active_child(context->source, context->color_filter);
 	obs_source_filter_add(context->image_source, context->color_filter);
-	
+#endif	
+
+	obs_source_add_active_child(context->source, context->image_source);
+
 	obs_source_update(context->image_source, settings);
 	dvd_source_update(context, settings);
 	
