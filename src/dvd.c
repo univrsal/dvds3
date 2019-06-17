@@ -1,4 +1,4 @@
-* This file is part of dvds3
+/* This file is part of dvds3
  * DVD screen saver source
  *
  * This program is free software: you can redistribute it and/or modify
