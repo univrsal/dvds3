@@ -1,7 +1,9 @@
 cmake_minimum_required(VERSION 2.8)
 project(dvd-screensaver)
 
-include(cmake/FindLibobs.cmake)
+if (WIN32 OR APPLE)
+	include(external/FindLibObs.cmake)
+endif()
 
 if(MSVC)
     set(dvd-screensaver_PLATFORM_DEPS
@@ -30,6 +32,8 @@ if(APPLE)
     add_definitions(-DMAC_OS=1)
 endif()
 
+find_package(LibObs REQUIRED)
+
 set(dvd-screensaver_SOURCES
     src/dvd.c)
 
@@ -42,34 +46,77 @@ target_link_libraries(dvd-screensaver
     libobs
     ${dvd-screensaver_PLATFORM_DEPS})
 
-add_custom_command(TARGET dvd-screensaver POST_BUILD
-	COMMAND if $<CONFIG:Release>==1 (
-		"${CMAKE_COMMAND}" -E make_directory
-			"${RELEASE_DIR}/data/obs-plugins/dvd-screensaver"
-			"${RELEASE_DIR}/obs-plugins/${OBS_ARCH_NAME}")
+set(RELEASE_DIR "${PROJECT_SOURCE_DIR}/release")
 
-	COMMAND if $<CONFIG:Release>==1 (
-		"${CMAKE_COMMAND}" -E copy_directory
-			"${PROJECT_SOURCE_DIR}/src/data"
+if (WIN32)
+set(RELEASE_DIR "${PROJECT_SOURCE_DIR}/release")
+
+	add_custom_command(TARGET dvd-screensaver POST_BUILD
+		# If config is Release, package release files
+		COMMAND if $<CONFIG:Release>==1 (
+			"${CMAKE_COMMAND}" -E make_directory
+			"${RELEASE_DIR}/data/obs-plugins/dvd-screensaver"
+			"${RELEASE_DIR}/obs-plugins/${ARCH_NAME}")
+
+		COMMAND if $<CONFIG:Release>==1 ("${CMAKE_COMMAND}" -E copy_directory
+			"${PROJECT_SOURCE_DIR}/data"
 			"${RELEASE_DIR}/data/obs-plugins/dvd-screensaver")
 
-	COMMAND if $<CONFIG:Release>==1 (
-		"${CMAKE_COMMAND}" -E copy
+		COMMAND if $<CONFIG:Release>==1 ("${CMAKE_COMMAND}" -E copy
 			"$<TARGET_FILE:dvd-screensaver>"
-			"${RELEASE_DIR}/obs-plugins/${OBS_ARCH_NAME}")
-			
-    #Copy to obs-studio dev environment for immediate testing
-    COMMAND if $<CONFIG:Debug>==1 (
-        "${CMAKE_COMMAND}" -E copy
-            "$<TARGET_FILE:dvd-screensaver>"
-            "${LIBOBS_INCLUDE_DIR}/../${OBS_BUILDDIR_ARCH}/rundir/$<CONFIG>/obs-plugins/${OBS_ARCH_NAME}")
+			"${RELEASE_DIR}/obs-plugins/${ARCH_NAME}")
 
-    COMMAND if $<CONFIG:Debug>==1 (
-        "${CMAKE_COMMAND}" -E make_directory
-            "${LIBOBS_INCLUDE_DIR}/../${OBS_BUILDDIR_ARCH}/rundir/$<CONFIG>/data/obs-plugins/dvd-screensaver")
 
-    COMMAND if $<CONFIG:Debug>==1 (
-        "${CMAKE_COMMAND}" -E copy_directory
-            "${PROJECT_SOURCE_DIR}/data"
-            "${LIBOBS_INCLUDE_DIR}/../${OBS_BUILDDIR_ARCH}/rundir/$<CONFIG>/data/obs-plugins/dvd-screensaver")
-)
+		# If config is RelWithDebInfo, package release files
+		COMMAND if $<CONFIG:RelWithDebInfo>==1 (
+			"${CMAKE_COMMAND}" -E make_directory
+			"${RELEASE_DIR}/data/obs-plugins/dvd-screensaver"
+			"${RELEASE_DIR}/obs-plugins/${ARCH_NAME}")
+
+		COMMAND if $<CONFIG:RelWithDebInfo>==1 ("${CMAKE_COMMAND}" -E copy_directory
+			"${PROJECT_SOURCE_DIR}/data"
+			"${RELEASE_DIR}/data/obs-plugins/dvd-screensaver")
+
+		COMMAND if $<CONFIG:RelWithDebInfo>==1 ("${CMAKE_COMMAND}" -E copy
+			"$<TARGET_FILE:dvd-screensaver>"
+			"${RELEASE_DIR}/obs-plugins/${ARCH_NAME}")
+
+		COMMAND if $<CONFIG:RelWithDebInfo>==1 ("${CMAKE_COMMAND}" -E copy
+			"$<TARGET_PDB_FILE:dvd-screensaver>"
+			"${RELEASE_DIR}/obs-plugins/${ARCH_NAME}")
+
+		# Copy to obs-studio dev environment for immediate testing
+		COMMAND if $<CONFIG:Debug>==1 (
+			"${CMAKE_COMMAND}" -E copy
+				"$<TARGET_FILE:dvd-screensaver>"
+				"${LIBOBS_INCLUDE_DIR}/../${OBS_BUILDDIR_ARCH}/rundir/$<CONFIG>/obs-plugins/${ARCH_NAME}")
+
+		COMMAND if $<CONFIG:Debug>==1 (
+			"${CMAKE_COMMAND}" -E copy
+				"$<TARGET_PDB_FILE:dvd-screensaver>"
+				"${LIBOBS_INCLUDE_DIR}/../${OBS_BUILDDIR_ARCH}/rundir/$<CONFIG>/obs-plugins/${ARCH_NAME}")
+
+		COMMAND if $<CONFIG:Debug>==1 (
+			"${CMAKE_COMMAND}" -E make_directory
+				"${LIBOBS_INCLUDE_DIR}/../${OBS_BUILDDIR_ARCH}/rundir/$<CONFIG>/data/obs-plugins/dvd-screensaver")
+
+		COMMAND if $<CONFIG:Debug>==1 (
+			"${CMAKE_COMMAND}" -E copy_directory
+				"${PROJECT_SOURCE_DIR}/data"
+				"${LIBOBS_INCLUDE_DIR}/../${OBS_BUILDDIR_ARCH}/rundir/$<CONFIG>/data/obs-plugins/dvd-screensaver")
+	)
+endif()
+
+if(UNIX AND NOT APPLE)
+	include(GNUInstallDirs)
+
+	set_target_properties(dvd-screensaver PROPERTIES PREFIX "")
+
+	file(GLOB locale_files data/locale/*.ini)
+
+	install(TARGETS dvd-screensaver
+		LIBRARY DESTINATION "$ENV{HOME}/.config/obs-studio/plugins/dvd-screensaver/bin/${OBS_ARCH_NAME}")
+
+	install(FILES ${locale_files}
+		DESTINATION "$ENV{HOME}/.config/obs-studio/plugins/dvd-screensaver/data/locale/")
+endif()

@@ -427,10 +427,10 @@ static void *dvd_source_create(obs_data_t *settings, obs_source_t *source)
 	struct dvd_source *context = bzalloc(sizeof(struct dvd_source));
 	context->source = source;
 	context->logo_source = obs_source_create_private(
-		"image_source", SOURCE_NAME, settings, NULL);
+		"image_source", SOURCE_NAME, settings);
 #ifndef MAC_OS
 	context->color_filter = obs_source_create_private(
-		"color_filter", FILTER_NAME, settings, NULL);
+		"color_filter", FILTER_NAME, settings);
 	obs_source_add_active_child(context->source, context->color_filter);
 	obs_source_filter_add(context->logo_source, context->color_filter);
 #endif
