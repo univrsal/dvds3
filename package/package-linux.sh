@@ -5,7 +5,7 @@ version=$1
 data_dir="../data"
 project="dvd-screensaver"
 arch="ubuntu.x64"
-build_location="../../../relwithdebinfo/rundir/RelWithDebInfo/obs-plugins/64bit"
+build_location="../build"
 build_dir=$project.v$version.$arch
 
 if [ -z "$version" ]; then
@@ -13,18 +13,23 @@ if [ -z "$version" ]; then
 	exit
 fi
 
+# Build 
+cd $build_location
+cmake ..
+make
+cd "../package"
+
 echo "Creating build directory"
-mkdir -p $build_dir/plugin
-mkdir -p $build_dir/plugin/bin/64bit
+mkdir -p $build_dir/$project/bin/64bit
 
 echo "Fetching build from $build_location"
-cp $build_location/$project.so $build_dir/plugin/bin/64bit/
+cp $build_location/$project.so $build_dir/$project/bin/64bit/
 
 echo "Fetching locale from $data_dir"
-cp -R $data_dir $build_dir/plugin
+cp -R $data_dir $build_dir/$project
 
 echo "Fetching misc files"
-cp ../LICENSE $build_dir/LICENSE.txt
+cp ../COPYING $build_dir/LICENSE.txt
 cp ./README.txt $build_dir/README.txt
 
 echo "Writing version number $version"
