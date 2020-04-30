@@ -1,10 +1,10 @@
 #!/bin/sh
 # Automatic packaging for linux builds
-
+. /etc/os-release
 version=$1
 data_dir="../data"
 project="dvd-screensaver"
-arch="ubuntu.x64"
+arch="${ID}.x64"
 build_location="../build"
 build_dir=$project.v$version.$arch
 
@@ -14,6 +14,7 @@ if [ -z "$version" ]; then
 fi
 
 # Build 
+mkdir -p $build_location
 cd $build_location
 cmake ..
 make
