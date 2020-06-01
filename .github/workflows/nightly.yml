@@ -37,14 +37,17 @@ jobs:
       if: steps.cache-linux-deps.outputs.cache-hit != 'true'
       shell: bash
       run: |
+        sudo add-apt-repository ppa:obsproject/obs-studio
+        
+        sudo apt update
+        
         sudo apt-get install -y \
           libc-dev-bin \
           libc6-dev git \
           build-essential \
           checkinstall \
           cmake \
-          obs-studio \
-          qtbase5-dev
+          obs-studio
     - name: Build plugin
       shell: bash
       run: |
