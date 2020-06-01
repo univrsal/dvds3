@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 2.8)
 project(dvd-screensaver)
 
+option(LOCAL_INSTALLATION "Whether to install for the current user (default: OFF)" OFF)
+
 if (WIN32 OR APPLE)
 	include(external/FindLibObs.cmake)
 endif()
@@ -108,15 +110,30 @@ set(RELEASE_DIR "${PROJECT_SOURCE_DIR}/release")
 endif()
 
 if(UNIX AND NOT APPLE)
+
 	include(GNUInstallDirs)
 
 	set_target_properties(dvd-screensaver PROPERTIES PREFIX "")
 
 	file(GLOB locale_files data/locale/*.ini)
 
-	install(TARGETS dvd-screensaver
-		LIBRARY DESTINATION "$ENV{HOME}/.config/obs-studio/plugins/dvd-screensaver/bin/${OBS_ARCH_NAME}")
+	if (LOCAL_INSTALLATION)
+		install(TARGETS dvd-screensaver
+			LIBRARY DESTINATION "$ENV{HOME}/.config/obs-studio/plugins/dvd-screensaver/bin/${OBS_ARCH_NAME}")
 
-	install(FILES ${locale_files}
-		DESTINATION "$ENV{HOME}/.config/obs-studio/plugins/dvd-screensaver/data/locale/")
+		install(FILES ${locale_files}
+			DESTINATION "$ENV{HOME}/.config/obs-studio/plugins/dvd-screensaver/data/locale/")
+	else()
+		install(TARGETS dvd-screensaver
+			LIBRARY DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/build/dvd-screensaver/bin/${OBS_ARCH_NAME}")
+
+		install(FILES ${locale_files}
+			DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/build/dvd-screensaver/data/locale/")
+		install(FILES ./COPYING
+			DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/build/LICENSE.txt")
+		configure_file(
+			package/README.txt.in
+			"${CMAKE_CURRENT_SOURCE_DIR}/build/README.txt"
+		)
+	endif()
 endif()
