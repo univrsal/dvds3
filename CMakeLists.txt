@@ -3,9 +3,9 @@ project(dvd-screensaver)
 
 option(LOCAL_INSTALLATION "Whether to install for the current user (default: OFF)" OFF)
 
-if (WIN32 OR APPLE)
-	include(external/FindLibObs.cmake)
-endif()
+set(CMAKE_MODULE_PATH "{CMAKE_MODULE_PATH}")
+
+include(external/FindLibObs.cmake)
 
 if(MSVC)
     set(dvd-screensaver_PLATFORM_DEPS
