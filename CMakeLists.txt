@@ -125,15 +125,15 @@ if(UNIX AND NOT APPLE)
 			DESTINATION "$ENV{HOME}/.config/obs-studio/plugins/dvd-screensaver/data/locale/")
 	else()
 		install(TARGETS dvd-screensaver
-			LIBRARY DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/build/dvd-screensaver/bin/${OBS_ARCH_NAME}")
+			LIBRARY DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/dist/dvd-screensaver/bin/${OBS_ARCH_NAME}")
 
 		install(FILES ${locale_files}
-			DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/build/dvd-screensaver/data/locale/")
+			DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/dist/dvd-screensaver/data/locale/")
 		install(FILES ./COPYING
 			DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/build/LICENSE.txt")
 		configure_file(
 			package/README.txt.in
-			"${CMAKE_CURRENT_SOURCE_DIR}/build/README.txt"
+			"${CMAKE_CURRENT_SOURCE_DIR}/dist/README.txt"
 		)
 	endif()
 endif()
