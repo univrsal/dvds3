@@ -5,7 +5,7 @@ option(LOCAL_INSTALLATION "Whether to install for the current user (default: OFF
 
 set(CMAKE_MODULE_PATH "{CMAKE_MODULE_PATH}")
 
-include(external/FindLibObs.cmake)
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
 
 if(MSVC)
     set(dvd-screensaver_PLATFORM_DEPS
