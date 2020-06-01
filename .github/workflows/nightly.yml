@@ -52,7 +52,7 @@ jobs:
         
         cmake --build ${{github.workspace}}/build/ --parallel 2 --target install
     - name: Upload
-      uses: actions/upload-artifac@v2
+      uses: actions/upload-artifact@v2
       with:
         name: nighly-linux
         path: ${{github.workspace}}/dist/**/*
