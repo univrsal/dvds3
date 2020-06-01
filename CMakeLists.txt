@@ -1,9 +1,8 @@
-cmake_minimum_required(VERSION 2.8)
-project(dvd-screensaver)
+cmake_minimum_required(VERSION 3.17)
+project(dvd-screensaver VERSION 1.1.0)
+set(PLUGIN_AUTHOR "univrsal")
 
 option(LOCAL_INSTALLATION "Whether to install for the current user (default: OFF)" OFF)
-
-set(CMAKE_MODULE_PATH "{CMAKE_MODULE_PATH}")
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
 
@@ -130,7 +129,7 @@ if(UNIX AND NOT APPLE)
 		install(FILES ${locale_files}
 			DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/dist/dvd-screensaver/data/locale/")
 		install(FILES ./COPYING
-			DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/build/LICENSE.txt")
+			DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/dist/")
 		configure_file(
 			package/README.txt.in
 			"${CMAKE_CURRENT_SOURCE_DIR}/dist/README.txt"

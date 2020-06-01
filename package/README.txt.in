@@ -1,4 +1,4 @@
-@CMAKE_PROJECT_NAMAE@ v@CMAKE_PROJECT_VERSION@
+@CMAKE_PROJECT_NAME@ v@CMAKE_PROJECT_VERSION@
 This program is licensed under the GPL v2.0 See LICENSE.txt
 github.com/univrsal/@CMAKE_PROJECT_NAME@
 
