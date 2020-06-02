@@ -3,8 +3,12 @@ project(dvd-screensaver VERSION 1.1.0)
 set(PLUGIN_AUTHOR "univrsal")
 
 option(LOCAL_INSTALLATION "Whether to install for the current user (default: OFF)" OFF)
+set(CMAKE_PREFIX_PATH "${QTDIR}")
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
+if (WIN32 OR APPLE)
+    set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
+endif()
 
 if(MSVC)
     set(dvd-screensaver_PLATFORM_DEPS
