@@ -195,7 +195,7 @@ if(UNIX AND NOT APPLE)
 			DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/dist/dvd-screensaver/data/locale/")
 		install(FILES ./COPYING
 			DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/dist/")
-		install(FILES "{CMAKE_CURRENT_SOURCE_DIR}/package/README.txt"
+		install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/package/README.txt"
 			DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/dist/")
 	endif()
 endif()
