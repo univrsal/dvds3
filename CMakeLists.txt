@@ -13,12 +13,12 @@ option(LOCAL_INSTALLATION "Whether to install for the current user (default: OFF
 option(GLOBAL_INSTALLATION "Whether to install for all users (default: OFF)" OFF)
 
 configure_file(
-    installer/installer-macOS.pkgproj.in
-    ../installer/installer-macOS.generated.pkgproj
+    package/installer-macOS.pkgproj.in
+    ../package/installer-macOS.generated.pkgproj
 )
 configure_file(
-    installer/installer-Windows.iss.in
-    ../installer/installer-Windows.generated.iss
+    package/installer-Windows.iss.in
+    ../package/installer-Windows.generated.iss
 )
 configure_file(
     ci/ci_includes.sh.in
