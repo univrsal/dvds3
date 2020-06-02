@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.17)
 project(dvd-screensaver VERSION 1.1.0)
 set(PLUGIN_AUTHOR "univrsal")
 set(PLUGIN_GIT dvds3)
+set(LINUX_MAINTAINER_EMAIL "uni@vrsal.cf")
+set(MACOS_BUNDLEID "cf.vrsal.dvds3")
 
 option(LOCAL_INSTALLATION "Whether to install for the current user (default: OFF)" OFF)
 
