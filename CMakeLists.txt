@@ -30,7 +30,7 @@ configure_file(
 )
 configure_file(
 	package/README.txt.in
-	package/README.txt
+	../package/README.txt
 )
 
 if (WIN32 OR APPLE)
