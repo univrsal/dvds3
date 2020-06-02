@@ -1,15 +1,15 @@
 @CMAKE_PROJECT_NAME@ v@CMAKE_PROJECT_VERSION@
-This program is licensed under the GPL v2.0 See LICENSE.txt
-github.com/univrsal/@CMAKE_PROJECT_NAME@
+This program is licensed under the GPL v2.0 See COPYING 
+github.com/univrsal/@PLUGIN_GIT@
 
 INSTALLATION
 
 Linux:
 ------
 1. Create a plugin folder in your home directory:
-  $ mkdir -p ~/.config/obs-studio/plugins/dvd-screensaver
+  $ mkdir -p ~/.config/obs-studio/plugins/@CMAKE_PROJECT_NAME@
 2. Extract the bolder bin and data into the newly created folder
-  $ mv plugin/* ~/.config/obs-studio/plugins/dvd-screensaver
+  $ mv plugin/* ~/.config/obs-studio/plugins/@CMAKE_PROJECT_NAME@
 
 Windows:
 1. Extract the archive
