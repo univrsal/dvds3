@@ -56,11 +56,40 @@ jobs:
         cmake -S ${{github.workspace}} -B ${{github.workspace}}/build/ \-G "Unix Makefiles" \
           -DCMAKE_INSTALL_PREFIX=${{github.workspace}}/dist
         cmake --build ${{github.workspace}}/build/ --parallel 2 --target install
+    - name: Compile deb installer
+      shell: bash
+      run: | # Now only build deb installer
+          cmake ${{github.workspace}} -B ${{github.workspace}}/build \
+            -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_VERBOSE_MAKEFILE=true \
+            -DOBS_FRONTEND_INCLUDE=/usr/include/obs -DGLOBAL_INSTALLATION=ON
+          sudo cmake --build ${{github.workspace}}/build \
+            --parallel 4 \
+            --target install
+          cd ${{github.workspace}}
+          export GIT_HASH=$(git rev-parse --short HEAD)
+          export PKG_VERSION="1-$GIT_HASH-$GITHUB_REF-git"
+          
+          [[ "$GITHUB_REF" =~ "^refs/tags/" ]] && export PKG_VERSION="$BRANCH_SHORT_NAME"
+          cd ${{github.workspace}}/build
+          echo "Packaging version ${PK_VERSION}"
+          PAGER="cat" sudo checkinstall -y --type=debian --fstrans=no --nodoc \
+            --backup=no --deldoc=yes --install=no \
+            --pkgname=dvd-screensaver --pkgversion="${PKG_VERSION}" \
+            --pkglicense="GPLv2.0" --maintainer="${{ env.maintainer }}" \
+            --pkggroup="video" \
+            --pkgsource="https://github.com/$GITHUB_REPOSITORY" \
+            --requires="obs-studio \(\>= ${{ env.obs-studio-version }}\)" \
+            --pakdir="../package"
     - name: Upload
       uses: actions/upload-artifact@v2
       with:
         name: nighly-linux
         path: ${{github.workspace}}/dist/**/*
+    - name: Upload installer
+      uses: actions/upload-artifact@v2
+      with:
+        name: debian-installer
+        path: ${{github.workspace}}/package/*.deb
   windows:
     name: 'Windows 32/64bit'
     runs-on: [windows-latest]
@@ -189,10 +218,10 @@ jobs:
           -DPTHREAD_LIB="${{ github.workspace }}\obs-studio\build32\deps\w32-pthreads\RelWithDebInfo\w32-pthreads.lib" ..
       - name: 'Build ${{ env.project }} 64-bit'
         working-directory: ${{ github.workspace }}/${{ env.project }}
-        run: msbuild /m /p:Configuration=RelWithDebInfo .\build64\io-base.sln
+        run: msbuild /m /p:Configuration=RelWithDebInfo .\build64\dvd-screensaver.sln
       - name: 'Build ${{ env.project }} 32-bit'
         working-directory: ${{ github.workspace }}/${{ env.project }}
-        run: msbuild /m /p:Configuration=RelWithDebInfo .\build32\io-base.sln
+        run: msbuild /m /p:Configuration=RelWithDebInfo .\build32\dvd-screensaver.sln
       - name: 'Set release filename'
         shell: bash
         run: |
@@ -201,20 +230,27 @@ jobs:
       - name: 'Package ${{ env.project }}'
         working-directory: ${{ github.workspace }}/${{ env.project }}
         run: |
-          mkdir build\obs-plugins\64bit
-          mkdir build\obs-plugins\32bit
-          mkdir build\data\obs-plugins\${{ env.project }}\
+          mkdir release\obs-plugins\64bit
+          mkdir release\obs-plugins\32bit
+          mkdir release\data\obs-plugins\${{ env.project }}\
           
-          robocopy .\build64\projects\plugin\RelWithDebInfo .\build\obs-plugins\64bit\ ${{ env.project }}.dll ${{ env.project }}.pdb
-          robocopy .\build32\projects\plugin\RelWithDebInfo .\build\obs-plugins\32bit\ ${{ env.project }}.dll ${{ env.project }}.pdb
-          robocopy /E .\data .\build\data\obs-plugins\${{ env.project }}
-          robocopy .\package\README.txt .\build\
+          robocopy .\build64\projects\plugin\RelWithDebInfo .\release\obs-plugins\64bit\ ${{ env.project }}.dll ${{ env.project }}.pdb
+          robocopy .\build32\projects\plugin\RelWithDebInfo .\release\obs-plugins\32bit\ ${{ env.project }}.dll ${{ env.project }}.pdb
+          robocopy /E .\data .\release\data\obs-plugins\${{ env.project }}
+          robocopy .\package\README.txt .\release\
           
           cd ${{ github.workspace }}/${{ env.project }}
-          7z a ".\${{ env.WIN_FILENAME }}.zip" ".\build\*"
+          7z a ".\${{ env.WIN_FILENAME }}.zip" ".\release\*"
+          iscc .\package\installer-Windows.iss /O. /F"${{ env.WIN_FILENAME }}-Installer"
       - name: 'Publish ${{ env.WIN_FILENAME }}.zip'
         if: success()
         uses: actions/upload-artifact@v2-preview
         with:
           name: '${{ env.GIT_TAG }}-Windows'
           path: ${{ github.workspace }}\${{ env.project }}\*.zip
+      - name: 'Publish ${{ env.WIN_FILENAME }}-Installer.exe'
+        if: success()
+        uses: actions/upload-artifact@v2-preview
+        with:
+          name: '${{ env.GIT_TAG }}-Windows-Installer'
+          path: ${{ github.workspace }}/${{ env.project }}/*.exe
