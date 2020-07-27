@@ -14,19 +14,11 @@ option(GLOBAL_INSTALLATION "Whether to install for all users (default: OFF)" OFF
 
 configure_file(
     package/installer-macOS.pkgproj.in
-    ../package/installer-macOS.generated.pkgproj
+    ../package/installer-macOS.pkgproj
 )
 configure_file(
     package/installer-Windows.iss.in
-    ../package/installer-Windows.generated.iss
-)
-configure_file(
-    ci/ci_includes.sh.in
-    ../ci/ci_includes.generated.sh
-)
-configure_file(
-    ci/ci_includes.cmd.in
-    ../ci/ci_includes.generated.cmd
+    ../package/installer-Windows.iss
 )
 configure_file(
 	package/README.txt.in
@@ -74,7 +66,8 @@ add_library(dvd-screensaver MODULE
     ${dvd-screensaver_SOURCES})
 
 include_directories(
-	"${LIBOBS_INCLUDE_DIR}/../UI/obs-frontend-api"
+    "${LIBOBS_INCLUDE_DIR}/../UI/obs-frontend-api"
+    ${LIBOBS_INCLUDE_DIR}
 	${Qt5Core_INCLUDES}
 	${Qt5Widgets_INCLUDES}
 )
