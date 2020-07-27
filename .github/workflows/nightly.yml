@@ -186,7 +186,7 @@ jobs:
           -DLIBOBS_INCLUDE_DIR="${{ github.workspace }}\obs-studio\libobs" `
           -DLIBOBS_LIB="${{ github.workspace }}\obs-studio\build32\libobs\RelWithDebInfo\obs.lib" `
           -DOBS_FRONTEND_LIB="${{ github.workspace }}\obs-studio\build32\UI\obs-frontend-api\RelWithDebInfo\obs-frontend-api.lib" `
-          -DPTHREAD_LIB="${{ github.workspace }}\obs-studio\build32\deps\w32-pthreads\RelWithDebInfo\w32-pthreads.lib" `
+          -DPTHREAD_LIB="${{ github.workspace }}\obs-studio\build32\deps\w32-pthreads\RelWithDebInfo\w32-pthreads.lib" ..
       - name: 'Build ${{ env.project }} 64-bit'
         working-directory: ${{ github.workspace }}/${{ env.project }}
         run: msbuild /m /p:Configuration=RelWithDebInfo .\build64\io-base.sln
