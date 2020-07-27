@@ -16,7 +16,7 @@ on:
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   # This workflow contains a single job called "build"
-  build:
+  build-linux:
     # The type of runner that the job will run on
     runs-on: ubuntu-latest
 
@@ -59,4 +59,75 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: nighly-linux
+        path: ${{github.workspace}}/dist/**/*
+  build-windows:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        target: [i386-win32-msvc, x86_64-win32-msvc]
+    env:
+      build_config: RelWithDebInfo
+      DepsBasePath: 'D:\obsdependencies'
+      DepsPath32: '$(DepsBasePath)\win32'
+      DepsPath64: '$(DepsBasePath)\win64'
+      QtBaseDir: 'D:\QtDep'
+      QTDIR32: '$(QtBaseDir)\5.10.1\msvc2017'
+      QTDIR64: '$(QtBaseDir)\5.10.1\msvc2017_64'
+      OBSPath: 'D:\obs-studio'
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      # Qt
+    - name: Cache Qt
+      id: cache-qt
+      uses: actions/cache@v2
+      with:
+        path: ${{QtBaseDir}}
+        key: obs-qt-cache
+    - name: Install Qt
+      if: steps.cache-qt.outputs.cache-hit != 'true'
+      run: ./ci/windows/install-qt-win.cmd
+
+      # Obs dependencies 
+    - name: Cache obs dependencies
+      id: cache-obs-deps
+      uses: actions/cache@v2
+      with:
+        path: ${{DepsBasePath}}
+        key: obs-deps-cache
+    - name: Download OBS Dependencies
+      if: steps.cache-obs-deps.outputs.cache-hit != 'true'
+      run: ./ci/windows/download-obs-deps.cmd
+    
+      # Prepare obs
+    - name: Cache obs build
+      id: cache-obs
+      uses: actions/cache@v2
+      with:
+        path: ${{OBSPath}}
+        key: obs-cache
+    - name: Checkout and Cmake OBS Studio
+      if: steps.cache-obs.outputs.cache-hit != 'true'
+      run: ./ci/windows/prepare-obs-windows.cmd
+    - name: Build OBS 32-bit
+      if: steps.cache-obs-deps.outputs.cache-hit != 'true'
+      run: cmake --build ${{OBSPath}}\build32
+          --parallel
+          --target ${{build_config}}
+    - name: Build OBS 64-bit
+      if: steps.cache-obs-deps.outputs.cache-hit != 'true'
+      run: cmake --build ${{OBSPath}}\build64
+          --parallel
+          --target ${{build_config}}
+    - name: Configure plugin
+      run: ./ci/windows/prepare-windows.cmd
+    - name: Build plugin
+      run: |
+        cmake --build ./build32
+        cmake --build ./build64
+    - name: Upload
+      uses: actions/upload-artifact@v2
+      with:
+        name: nightly-build
         path: ${{github.workspace}}/dist/**/*
