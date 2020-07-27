@@ -60,74 +60,160 @@ jobs:
       with:
         name: nighly-linux
         path: ${{github.workspace}}/dist/**/*
-  build-windows:
-    runs-on: windows-latest
-    strategy:
-      fail-fast: true
-      matrix:
-        target: [i386-win32-msvc, x86_64-win32-msvc]
+  windows:
+    name: 'Windows 32+64bit'
+    runs-on: [windows-latest]
     env:
-      build_config: RelWithDebInfo
-      DepsBasePath: 'D:\obsdependencies'
-      DepsPath32: '$(DepsBasePath)\win32'
-      DepsPath64: '$(DepsBasePath)\win64'
-      QtBaseDir: 'D:\QtDep'
-      QTDIR32: '$(QtBaseDir)\5.10.1\msvc2017'
-      QTDIR64: '$(QtBaseDir)\5.10.1\msvc2017_64'
-      OBSPath: 'D:\obs-studio'
+      QT_VERSION: '5.10.1'
+      WINDOWS_DEPS_VERSION: '2017'
+      CMAKE_GENERATOR: "Visual Studio 16 2019"
+      CMAKE_SYSTEM_VERSION: "10.0"
+      obs-studio-version: 25.0.8
+      project: tuna
     steps:
-    - name: Checkout
-      uses: actions/checkout@v2
-      # Qt
-    - name: Cache Qt
-      id: cache-qt
-      uses: actions/cache@v2
-      with:
-        path: ${{QtBaseDir}}
-        key: obs-qt-cache
-    - name: Install Qt
-      if: steps.cache-qt.outputs.cache-hit != 'true'
-      run: ./ci/windows/install-qt-win.cmd
-
-      # Obs dependencies 
-    - name: Cache obs dependencies
-      id: cache-obs-deps
-      uses: actions/cache@v2
-      with:
-        path: ${{DepsBasePath}}
-        key: obs-deps-cache
-    - name: Download OBS Dependencies
-      if: steps.cache-obs-deps.outputs.cache-hit != 'true'
-      run: ./ci/windows/download-obs-deps.cmd
-    
-      # Prepare obs
-    - name: Cache obs build
-      id: cache-obs
-      uses: actions/cache@v2
-      with:
-        path: ${{OBSPath}}
-        key: obs-cache
-    - name: Checkout and Cmake OBS Studio
-      if: steps.cache-obs.outputs.cache-hit != 'true'
-      run: ./ci/windows/prepare-obs-windows.cmd
-    - name: Build OBS 32-bit
-      if: steps.cache-obs-deps.outputs.cache-hit != 'true'
-      run: cmake --build ${{OBSPath}}\build32
-          --parallel
-          --target ${{build_config}}
-    - name: Build OBS 64-bit
-      if: steps.cache-obs-deps.outputs.cache-hit != 'true'
-      run: cmake --build ${{OBSPath}}\build64
-          --parallel
-          --target ${{build_config}}
-    - name: Configure plugin
-      run: ./ci/windows/prepare-windows.cmd
-    - name: Build plugin
-      run: |
-        cmake --build ./build32
-        cmake --build ./build64
-    - name: Upload
-      uses: actions/upload-artifact@v2
-      with:
-        name: nightly-build
-        path: ${{github.workspace}}/dist/**/*
+      - name: 'Add msbuild to PATH'
+        uses: microsoft/setup-msbuild@v1.0.0
+      - name: 'Checkout'
+        uses: actions/checkout@v2
+        with:
+          path: ${{ github.workspace }}/${{ env.project }}
+          submodules: 'recursive'
+      - name: 'Checkout OBS'
+        uses: actions/checkout@v2
+        with:
+          repository: obsproject/obs-studio
+          path: ${{ github.workspace }}/obs-studio
+          submodules: 'recursive'
+      - name: 'Get OBS-Studio git info'
+        shell: bash
+        working-directory: ${{ github.workspace }}/obs-studio
+        run: |
+          git fetch --prune --unshallow
+          echo ::set-env name=OBS_GIT_BRANCH::$(git rev-parse --abbrev-ref HEAD)
+          echo ::set-env name=OBS_GIT_HASH::$(git rev-parse --short HEAD)
+          echo ::set-env name=OBS_GIT_TAG::$(git describe --tags --abbrev=0)
+      - name: 'Checkout last OBS-Studio release (${{ env.OBS_GIT_TAG }})'
+        shell: bash
+        working-directory: ${{ github.workspace }}/obs-studio
+        run: |
+          git checkout ${{ env.OBS_GIT_TAG }}
+          git submodule update
+      - name: 'Get ${{ env.project}} git info'
+        shell: bash
+        working-directory: ${{ github.workspace }}/${{ env.project}}
+        run: |
+          git fetch --prune --unshallow
+          echo ::set-env name=GIT_BRANCH::${{ github.event.pull_request.head.ref }}
+          echo ::set-env name=GIT_HASH::$(git rev-parse --short HEAD)
+          echo ::set-env name=GIT_TAG::$(git describe --tags --abbrev=0)
+      - name: 'Install prerequisite: QT'
+        run: |
+          curl -kLO https://cdn-fastly.obsproject.com/downloads/Qt_${{ env.QT_VERSION }}.7z -f --retry 5 -C -
+          7z x Qt_${{ env.QT_VERSION }}.7z -o"${{ github.workspace }}\cmbuild\QT"
+      - name: 'Install prerequisite: Pre-built OBS dependencies'
+        run: |
+          curl -kLO https://cdn-fastly.obsproject.com/downloads/dependencies${{ env.WINDOWS_DEPS_VERSION }}.zip -f --retry 5 -C -
+          7z x dependencies${{ env.WINDOWS_DEPS_VERSION }}.zip -o"${{ github.workspace }}\cmbuild\deps"
+      - name: 'Restore OBS 32-bit build v${{ env.OBS_GIT_TAG }} from cache'
+        id: build-cache-obs-32
+        uses: actions/cache@v1
+        env:
+          CACHE_NAME: 'build-cache-obs-32'
+        with:
+          path: ${{ github.workspace }}/obs-studio/build32
+          key: ${{ runner.os }}-${{ env.CACHE_NAME }}-${{ env.OBS_GIT_TAG }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.CACHE_NAME }}-
+      - name: 'Configure OBS 32-bit'
+        if: steps.build-cache-obs-32.outputs.cache-hit != 'true'
+        working-directory: ${{ github.workspace }}/obs-studio
+        run: |
+          mkdir .\build32
+          cd .\build32
+          cmake -G "${{ env.CMAKE_GENERATOR }}" -A Win32 -DCMAKE_SYSTEM_VERSION="${{ env.CMAKE_SYSTEM_VERSION }}" -DQTDIR="${{ github.workspace }}\cmbuild\QT\${{ env.QT_VERSION }}\msvc2017" -DDepsPath="${{ github.workspace }}\cmbuild\deps\win32" -DBUILD_CAPTIONS=YES -DCOPIED_DEPENDENCIES=NO -DCOPY_DEPENDENCIES=YES ..
+      - name: 'Build OBS-Studio 32-bit'
+        if: steps.build-cache-obs-32.outputs.cache-hit != 'true'
+        working-directory: ${{ github.workspace }}/obs-studio
+        run: |
+          msbuild /m /p:Configuration=RelWithDebInfo .\build32\libobs\libobs.vcxproj
+          msbuild /m /p:Configuration=RelWithDebInfo .\build32\UI\obs-frontend-api\obs-frontend-api.vcxproj
+      - name: 'Restore OBS 64-bit build v${{ env.OBS_GIT_TAG }} from cache'
+        id: build-cache-obs-64
+        uses: actions/cache@v1
+        env:
+          CACHE_NAME: 'build-cache-obs-64'
+        with:
+          path: ${{ github.workspace }}/obs-studio/build64
+          key: ${{ runner.os }}-${{ env.CACHE_NAME }}-${{ env.OBS_GIT_TAG }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.CACHE_NAME }}-
+      - name: 'Configure OBS 64-bit'
+        if: steps.build-cache-obs-64.outputs.cache-hit != 'true'
+        working-directory: ${{ github.workspace }}/obs-studio
+        run: |
+          mkdir .\build64
+          cd .\build64
+          cmake -G "${{ env.CMAKE_GENERATOR }}" -A x64 -DCMAKE_SYSTEM_VERSION="${{ env.CMAKE_SYSTEM_VERSION }}" -DQTDIR="${{ github.workspace }}\cmbuild\QT\${{ env.QT_VERSION }}\msvc2017_64" -DDepsPath="${{ github.workspace }}\cmbuild\deps\win64" -DBUILD_CAPTIONS=YES -DCOPIED_DEPENDENCIES=NO -DCOPY_DEPENDENCIES=YES ..
+      - name: 'Build OBS-Studio 64-bit'
+        if: steps.build-cache-obs-64.outputs.cache-hit != 'true'
+        working-directory: ${{ github.workspace }}/obs-studio
+        run: |
+          msbuild /m /p:Configuration=RelWithDebInfo .\build64\libobs\libobs.vcxproj
+          msbuild /m /p:Configuration=RelWithDebInfo .\build64\UI\obs-frontend-api\obs-frontend-api.vcxproj
+      - name: 'Configure ${{ env.project }}  64-bit'
+        working-directory: ${{ github.workspace }}\${{ env.project }}
+        run: |
+          mkdir .\build64
+          cd .\build64
+          cmake -G "${{ env.CMAKE_GENERATOR }}" -A x64 -DCMAKE_SYSTEM_VERSION="${{ env.CMAKE_SYSTEM_VERSION }}" `
+            -DQTDIR="${{ github.workspace }}\cmbuild\QT\${{ env.QT_VERSION }}\msvc2017_64" `
+            -DDepsPath="${{ github.workspace }}\cmbuild\deps\win64" `
+            -DLibObs_DIR="${{ github.workspace }}\obs-studio\build64\libobs" `
+            -DLIBOBS_INCLUDE_DIR="${{ github.workspace }}\obs-studio\libobs" `
+            -DLIBOBS_LIB="${{ github.workspace }}\obs-studio\build64\libobs\RelWithDebInfo\obs.lib" `
+            -DOBS_FRONTEND_LIB="${{ github.workspace }}\obs-studio\build64\UI\obs-frontend-api\RelWithDebInfo\obs-frontend-api.lib" `
+            -DPTHREAD_LIB="${{ github.workspace }}\obs-studio\build64\deps\w32-pthreads\RelWithDebInfo\w32-pthreads.lib" `
+      - name: 'Configure ${{ env.project }}  32-bit'
+        working-directory: ${{ github.workspace }}/${{ env.project }}
+        run: |
+          mkdir .\build32
+          cd .\build32
+          cmake -G "${{ env.CMAKE_GENERATOR }}" -A Win32 -DCMAKE_SYSTEM_VERSION="${{ env.CMAKE_SYSTEM_VERSION }}" `
+          -DQTDIR="${{ github.workspace }}\cmbuild\QT\${{ env.QT_VERSION }}\msvc2017" `
+          -DDepsPath="${{ github.workspace }}\cmbuild\deps\win32" `
+          -DLibObs_DIR="${{ github.workspace }}\obs-studio\build32\libobs" `
+          -DLIBOBS_INCLUDE_DIR="${{ github.workspace }}\obs-studio\libobs" `
+          -DLIBOBS_LIB="${{ github.workspace }}\obs-studio\build32\libobs\RelWithDebInfo\obs.lib" `
+          -DOBS_FRONTEND_LIB="${{ github.workspace }}\obs-studio\build32\UI\obs-frontend-api\RelWithDebInfo\obs-frontend-api.lib" `
+          -DPTHREAD_LIB="${{ github.workspace }}\obs-studio\build32\deps\w32-pthreads\RelWithDebInfo\w32-pthreads.lib" `
+      - name: 'Build ${{ env.project }} 64-bit'
+        working-directory: ${{ github.workspace }}/${{ env.project }}
+        run: msbuild /m /p:Configuration=RelWithDebInfo .\build64\io-base.sln
+      - name: 'Build ${{ env.project }} 32-bit'
+        working-directory: ${{ github.workspace }}/${{ env.project }}
+        run: msbuild /m /p:Configuration=RelWithDebInfo .\build32\io-base.sln
+      - name: 'Set release filename'
+        shell: bash
+        run: |
+          FILENAME="${{ env.project }}-${{ env.GIT_TAG }}-Windows"
+          echo "::set-env name=WIN_FILENAME::$FILENAME"
+      - name: 'Package ${{ env.project }}'
+        working-directory: ${{ github.workspace }}/${{ env.project }}
+        run: |
+          mkdir build\obs-plugins\64bit
+          mkdir build\obs-plugins\32bit
+          mkdir build\data\obs-plugins\${{ env.project }}\
+          
+          robocopy .\build64\projects\plugin\RelWithDebInfo .\build\obs-plugins\64bit\ ${{ env.project }}.dll ${{ env.project }}.pdb
+          robocopy .\build32\projects\plugin\RelWithDebInfo .\build\obs-plugins\32bit\ ${{ env.project }}.dll ${{ env.project }}.pdb
+          robocopy /E .\data .\build\data\obs-plugins\${{ env.project }}
+          robocopy .\package\README.txt .\build\
+          
+          cd ${{ github.workspace }}/${{ env.project }}
+          7z a ".\${{ env.WIN_FILENAME }}.zip" ".\build\*"
+      - name: 'Publish ${{ env.WIN_FILENAME }}.zip'
+        if: success()
+        uses: actions/upload-artifact@v2-preview
+        with:
+          name: '${{ env.GIT_TAG }}-Windows'
+          path: ${{ github.workspace }}\${{ env.project }}\*.zip
