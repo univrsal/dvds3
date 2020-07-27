@@ -81,8 +81,6 @@ include_directories(
 
 target_link_libraries(dvd-screensaver
 	libobs
-	Qt5::Core
-	Qt5::Widgets
     ${dvd-screensaver_PLATFORM_DEPS})
 
 
@@ -170,15 +168,13 @@ if(UNIX AND NOT APPLE)
 	set_target_properties(dvd-screensaver PROPERTIES PREFIX "")
 	target_link_libraries(${CMAKE_PROJECT_NAME} obs-frontend-api)
 
-	file(GLOB locale_files data/locale/*.ini)
-
 	if (LOCAL_INSTALLATION)
 		# Installs into home directory
 		install(TARGETS dvd-screensaver
 			LIBRARY DESTINATION "$ENV{HOME}/.config/obs-studio/plugins/dvd-screensaver/bin/${OBS_ARCH_NAME}")
 
-		install(FILES ${locale_files}
-			DESTINATION "$ENV{HOME}/.config/obs-studio/plugins/dvd-screensaver/data/locale/")
+        install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/data
+            DESTINATION "$ENV{HOME}/.config/obs-studio/plugins/input-overlay/")
 	elseif(GLOBAL_INSTALLATION)
 		# For *.deb installer
 		install(TARGETS ${CMAKE_PROJECT_NAME}
@@ -187,15 +183,14 @@ if(UNIX AND NOT APPLE)
 		install(FILES ${locale_files}
 			DESTINATION "${CMAKE_INSTALL_FULL_DATAROOTDIR}/obs/obs-plugins/${CMAKE_PROJECT_NAME}/locale")
 	else()
-		# For *.zip binary
-		install(TARGETS dvd-screensaver
-			LIBRARY DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/dist/dvd-screensaver/bin/${OBS_ARCH_NAME}")
+        # For *.zip binary
+        install(TARGETS dvd-screensaver
+            LIBRARY DESTINATION "dvd-screensaver/bin/${OBS_ARCH_NAME}")
 
-		install(FILES ${locale_files}
-			DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/dist/dvd-screensaver/data/locale/")
-		install(FILES ./COPYING
-			DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/dist/")
-		install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/package/README.txt"
-			DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/dist/")
+        install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/data
+            DESTINATION "dvd-screensaver")
+        
+        install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/package/README.txt"
+            DESTINATION "dvd-screensaver")
 	endif()
 endif()
