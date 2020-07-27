@@ -17,6 +17,7 @@ on:
 jobs:
   # This workflow contains a single job called "build"
   build-linux:
+    name: 'Linux 64bit'
     # The type of runner that the job will run on
     runs-on: ubuntu-latest
 
@@ -52,8 +53,8 @@ jobs:
     - name: Build plugin
       shell: bash
       run: |
-        cmake -S ${{github.workspace}} -B ${{github.workspace}}/build/ \-G "Unix Makefiles"
-        
+        cmake -S ${{github.workspace}} -B ${{github.workspace}}/build/ \-G "Unix Makefiles" \
+          DCMAKE_INSTALL_PREFIX=${{github.workspace}}/dist
         cmake --build ${{github.workspace}}/build/ --parallel 2 --target install
     - name: Upload
       uses: actions/upload-artifact@v2
@@ -61,7 +62,7 @@ jobs:
         name: nighly-linux
         path: ${{github.workspace}}/dist/**/*
   windows:
-    name: 'Windows 32+64bit'
+    name: 'Windows 32/64bit'
     runs-on: [windows-latest]
     env:
       QT_VERSION: '5.10.1'
@@ -69,7 +70,7 @@ jobs:
       CMAKE_GENERATOR: "Visual Studio 16 2019"
       CMAKE_SYSTEM_VERSION: "10.0"
       obs-studio-version: 25.0.8
-      project: tuna
+      project: dvds3
     steps:
       - name: 'Add msbuild to PATH'
         uses: microsoft/setup-msbuild@v1.0.0
