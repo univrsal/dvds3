@@ -249,10 +249,10 @@ jobs:
         uses: actions/upload-artifact@v2-preview
         with:
           name: '${{ env.GIT_TAG }}-Windows'
-          path: ${{ github.workspace }}\${{ env.project-name }}\*.zip
+          path: ${{ github.workspace }}\${{ env.project-git }}\*.zip
       - name: 'Publish ${{ env.WIN_FILENAME }}-Installer.exe'
         if: success()
         uses: actions/upload-artifact@v2-preview
         with:
           name: '${{ env.GIT_TAG }}-Windows-Installer'
-          path: ${{ github.workspace }}/${{ env.project }}/*.exe
+          path: ${{ github.workspace }}/${{ env.project-git }}/*.exe
