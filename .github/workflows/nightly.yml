@@ -9,20 +9,15 @@ on:
   push:
     branches:
     - master
-    - pkg-build
     tags:
     - "v*"
-
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
   build-linux:
     name: 'Linux 64bit'
-    # The type of runner that the job will run on
     runs-on: ubuntu-latest
     env:
       obs-studio-version: 25.0.8
-    # Steps represent a sequence of tasks that will be executed as part of the job
+      project-name: dvd-screensaver 
     steps:
     - name: Checkout
       uses: actions/checkout@v2
@@ -69,27 +64,29 @@ jobs:
           cd ${{github.workspace}}
           export GIT_HASH=$(git rev-parse --short HEAD)
           export PKG_VERSION="1-$GIT_HASH-$GITHUB_REF-git"
+          export GIT_VERSION=$(git describe --tags --abbrev=0)
           
           [[ "$GITHUB_REF" =~ "^refs/tags/" ]] && export PKG_VERSION="$BRANCH_SHORT_NAME"
           cd ${{github.workspace}}/build
-          echo "Packaging version ${PK_VERSION}"
+          echo "Packaging version ${PKG_VERSION}"
           PAGER="cat" sudo checkinstall -y --type=debian --fstrans=no --nodoc \
             --backup=no --deldoc=yes --install=no \
-            --pkgname=dvd-screensaver --pkgversion="${PKG_VERSION}" \
+            --pkgname=${{ env.project-name }} --pkgversion="$GIT_VERSION" \
             --pkglicense="GPLv2.0" --maintainer="${{ env.maintainer }}" \
             --pkggroup="video" \
             --pkgsource="https://github.com/$GITHUB_REPOSITORY" \
             --requires="obs-studio \(\>= ${{ env.obs-studio-version }}\)" \
             --pakdir="../package"
-    - name: Upload
+          mv ../package/*.deb ../package/${{ env.project-name }}.linux.x64.deb
+    - name: Publish Linux binary
       uses: actions/upload-artifact@v2
       with:
-        name: nighly-linux
+        name: ${{ env.project-name }}.linux.x64
         path: ${{github.workspace}}/dist/**/*
-    - name: Upload installer
+    - name: Publish Linux installer
       uses: actions/upload-artifact@v2
       with:
-        name: debian-installer
+        name: ${{ env.project-name }}.installer.linux.x64
         path: ${{github.workspace}}/package/*.deb
   windows:
     name: 'Windows 32/64bit'
@@ -224,11 +221,6 @@ jobs:
       - name: 'Build ${{ env.project-git }} 32-bit'
         working-directory: ${{ github.workspace }}/${{ env.project-git }}
         run: msbuild /m /p:Configuration=RelWithDebInfo .\build32\${{ env.project-name }}.sln
-      - name: 'Set release filename'
-        shell: bash
-        run: |
-          FILENAME="${{ env.project-git  }}-${{ env.GIT_TAG }}-Windows"
-          echo "::set-env name=WIN_FILENAME::$FILENAME"
       - name: 'Package ${{ env.project-git  }}'
         working-directory: ${{ github.workspace }}/${{ env.project-git }}
         run: |
@@ -242,17 +234,16 @@ jobs:
           robocopy .\package .\release README.txt
           
           cd ${{ github.workspace }}/${{ env.project-git }}
-          7z a ".\${{ env.WIN_FILENAME }}.zip" ".\release\*"
-          iscc .\package\installer-Windows.iss /O. /F"${{ env.WIN_FILENAME }}-Installer"
-      - name: 'Publish ${{ env.WIN_FILENAME }}.zip'
+          iscc .\package\installer-Windows.iss /O. /F"${{ env.project-name }}.${{ env.GIT_TAG }}.installer.windows"
+      - name: 'Publish Windows binary'
         if: success()
         uses: actions/upload-artifact@v2-preview
         with:
-          name: '${{ env.GIT_TAG }}-Windows'
-          path: ${{ github.workspace }}\${{ env.project-git }}\*.zip
-      - name: 'Publish ${{ env.WIN_FILENAME }}-Installer.exe'
+          name: '${{ env.project-name }}.${{ env.GIT_TAG }}.windows'
+          path: ${{ github.workspace }}\${{ env.project-git }}\release\**\*
+      - name: 'Publish Windows installer'
         if: success()
         uses: actions/upload-artifact@v2-preview
         with:
-          name: '${{ env.GIT_TAG }}-Windows-Installer'
+          name: '${{ env.project-name }}.${{ env.GIT_TAG }}.installer.windows'
           path: ${{ github.workspace }}/${{ env.project-git }}/*.exe
