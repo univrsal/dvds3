@@ -236,8 +236,8 @@ jobs:
           mkdir release\obs-plugins\32bit
           mkdir release\data\obs-plugins\${{ env.project-name }}\
           
-          robocopy .\build64\projects\plugin\RelWithDebInfo .\release\obs-plugins\64bit\ ${{ env.project-name }}.dll ${{ env.project-name }}.pdb
-          robocopy .\build32\projects\plugin\RelWithDebInfo .\release\obs-plugins\32bit\ ${{ env.project-name }}.dll ${{ env.project-name }}.pdb
+          robocopy .\build64\plugin\RelWithDebInfo .\release\obs-plugins\64bit\ ${{ env.project-name }}.dll ${{ env.project-name }}.pdb
+          robocopy .\build32\plugin\RelWithDebInfo .\release\obs-plugins\32bit\ ${{ env.project-name }}.dll ${{ env.project-name }}.pdb
           robocopy /E .\data .\release\data\obs-plugins\${{ env.project-name }}
           robocopy .\package\README.txt .\release\
           
