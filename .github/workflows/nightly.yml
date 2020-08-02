@@ -100,14 +100,15 @@ jobs:
       CMAKE_GENERATOR: "Visual Studio 16 2019"
       CMAKE_SYSTEM_VERSION: "10.0"
       obs-studio-version: 25.0.8
-      project: dvds3
+      project-git: dvds3
+      project-name: dvd-screensaver 
     steps:
       - name: 'Add msbuild to PATH'
         uses: microsoft/setup-msbuild@v1.0.0
       - name: 'Checkout'
         uses: actions/checkout@v2
         with:
-          path: ${{ github.workspace }}/${{ env.project }}
+          path: ${{ github.workspace }}/${{ env.project-git }}
           submodules: 'recursive'
       - name: 'Checkout OBS'
         uses: actions/checkout@v2
@@ -129,9 +130,9 @@ jobs:
         run: |
           git checkout ${{ env.OBS_GIT_TAG }}
           git submodule update
-      - name: 'Get ${{ env.project}} git info'
+      - name: 'Get ${{ env.project-git }} git info'
         shell: bash
-        working-directory: ${{ github.workspace }}/${{ env.project}}
+        working-directory: ${{ github.workspace }}/${{ env.project-git }}
         run: |
           git fetch --prune --unshallow
           echo ::set-env name=GIT_BRANCH::${{ github.event.pull_request.head.ref }}
@@ -191,8 +192,8 @@ jobs:
         run: |
           msbuild /m /p:Configuration=RelWithDebInfo .\build64\libobs\libobs.vcxproj
           msbuild /m /p:Configuration=RelWithDebInfo .\build64\UI\obs-frontend-api\obs-frontend-api.vcxproj
-      - name: 'Configure ${{ env.project }}  64-bit'
-        working-directory: ${{ github.workspace }}\${{ env.project }}
+      - name: 'Configure ${{ env.project-git }}  64-bit'
+        working-directory: ${{ github.workspace }}\${{ env.project-git }}
         run: |
           mkdir .\build64
           cd .\build64
@@ -204,8 +205,8 @@ jobs:
             -DLIBOBS_LIB="${{ github.workspace }}\obs-studio\build64\libobs\RelWithDebInfo\obs.lib" `
             -DOBS_FRONTEND_LIB="${{ github.workspace }}\obs-studio\build64\UI\obs-frontend-api\RelWithDebInfo\obs-frontend-api.lib" `
             -DPTHREAD_LIB="${{ github.workspace }}\obs-studio\build64\deps\w32-pthreads\RelWithDebInfo\w32-pthreads.lib" ..
-      - name: 'Configure ${{ env.project }}  32-bit'
-        working-directory: ${{ github.workspace }}/${{ env.project }}
+      - name: 'Configure ${{ env.project-git }}  32-bit'
+        working-directory: ${{ github.workspace }}/${{ env.project-git }}
         run: |
           mkdir .\build32
           cd .\build32
@@ -217,30 +218,30 @@ jobs:
           -DLIBOBS_LIB="${{ github.workspace }}\obs-studio\build32\libobs\RelWithDebInfo\obs.lib" `
           -DOBS_FRONTEND_LIB="${{ github.workspace }}\obs-studio\build32\UI\obs-frontend-api\RelWithDebInfo\obs-frontend-api.lib" `
           -DPTHREAD_LIB="${{ github.workspace }}\obs-studio\build32\deps\w32-pthreads\RelWithDebInfo\w32-pthreads.lib" ..
-      - name: 'Build ${{ env.project }} 64-bit'
-        working-directory: ${{ github.workspace }}/${{ env.project }}
+      - name: 'Build ${{ env.project-git }} 64-bit'
+        working-directory: ${{ github.workspace }}/${{ env.project-git }}
         run: msbuild /m /p:Configuration=RelWithDebInfo .\build64\dvd-screensaver.sln
-      - name: 'Build ${{ env.project }} 32-bit'
-        working-directory: ${{ github.workspace }}/${{ env.project }}
+      - name: 'Build ${{ env.project-git }} 32-bit'
+        working-directory: ${{ github.workspace }}/${{ env.project-git }}
         run: msbuild /m /p:Configuration=RelWithDebInfo .\build32\dvd-screensaver.sln
       - name: 'Set release filename'
         shell: bash
         run: |
-          FILENAME="${{ env.project }}-${{ env.GIT_TAG }}-Windows"
+          FILENAME="${{ env.project-git  }}-${{ env.GIT_TAG }}-Windows"
           echo "::set-env name=WIN_FILENAME::$FILENAME"
-      - name: 'Package ${{ env.project }}'
-        working-directory: ${{ github.workspace }}/${{ env.project }}
+      - name: 'Package ${{ env.project-git  }}'
+        working-directory: ${{ github.workspace }}/${{ env.project-git }}
         run: |
           mkdir release\obs-plugins\64bit
           mkdir release\obs-plugins\32bit
-          mkdir release\data\obs-plugins\${{ env.project }}\
+          mkdir release\data\obs-plugins\${{ env.project-name }}\
           
-          robocopy .\build64\projects\plugin\RelWithDebInfo .\release\obs-plugins\64bit\ ${{ env.project }}.dll ${{ env.project }}.pdb
-          robocopy .\build32\projects\plugin\RelWithDebInfo .\release\obs-plugins\32bit\ ${{ env.project }}.dll ${{ env.project }}.pdb
-          robocopy /E .\data .\release\data\obs-plugins\${{ env.project }}
+          robocopy .\build64\projects\plugin\RelWithDebInfo .\release\obs-plugins\64bit\ ${{ env.project-name }}.dll ${{ env.project-name }}.pdb
+          robocopy .\build32\projects\plugin\RelWithDebInfo .\release\obs-plugins\32bit\ ${{ env.project-name }}.dll ${{ env.project-name }}.pdb
+          robocopy /E .\data .\release\data\obs-plugins\${{ env.project-name }}
           robocopy .\package\README.txt .\release\
           
-          cd ${{ github.workspace }}/${{ env.project }}
+          cd ${{ github.workspace }}/${{ env.project-git }}
           7z a ".\${{ env.WIN_FILENAME }}.zip" ".\release\*"
           iscc .\package\installer-Windows.iss /O. /F"${{ env.WIN_FILENAME }}-Installer"
       - name: 'Publish ${{ env.WIN_FILENAME }}.zip'
@@ -248,7 +249,7 @@ jobs:
         uses: actions/upload-artifact@v2-preview
         with:
           name: '${{ env.GIT_TAG }}-Windows'
-          path: ${{ github.workspace }}\${{ env.project }}\*.zip
+          path: ${{ github.workspace }}\${{ env.project-name }}\*.zip
       - name: 'Publish ${{ env.WIN_FILENAME }}-Installer.exe'
         if: success()
         uses: actions/upload-artifact@v2-preview
