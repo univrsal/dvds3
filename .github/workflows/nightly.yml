@@ -239,7 +239,7 @@ jobs:
           robocopy .\build64\RelWithDebInfo .\release\obs-plugins\64bit\ ${{ env.project-name }}.dll ${{ env.project-name }}.pdb
           robocopy .\build32\RelWithDebInfo .\release\obs-plugins\32bit\ ${{ env.project-name }}.dll ${{ env.project-name }}.pdb
           robocopy /E .\data .\release\data\obs-plugins\${{ env.project-name }}
-          robocopy .\package\README.txt .\release\
+          robocopy .\package .\release README.txt
           
           cd ${{ github.workspace }}/${{ env.project-git }}
           7z a ".\${{ env.WIN_FILENAME }}.zip" ".\release\*"
