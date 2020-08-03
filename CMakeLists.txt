@@ -128,4 +128,13 @@ if(UNIX AND NOT APPLE)
         install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/package/README.txt"
             DESTINATION "${CMAKE_PROJECT_NAME}")
     endif()
+elseif(APPLE)
+    if(NOT DEFINED OBS_FRONTEND_LIB)
+        set(OBS_FRONTEND_LIB "OBS_FRONTEND_LIB-NOTFOUND" CACHE FILEPATH "OBS frontend library")
+        message(FATAL_ERROR "Could not find OBS Frontend API\'s library !")
+    endif()
+
+    target_link_libraries(${CMAKE_PROJECT_NAME}
+        "${OBS_FRONTEND_LIB}"
+    )
 endif()
