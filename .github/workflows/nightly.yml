@@ -29,7 +29,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
         with:
-          path: ${{ github.workspace }}
+          path: ${{ github.workspace }}/${{ env.project-git }}
           submodules: 'recursive'
       - name: Fetch Git Tags
         run: |
