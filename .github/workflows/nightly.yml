@@ -42,6 +42,16 @@ jobs:
           repository: obsproject/obs-studio
           submodules: 'recursive'
           path: obs-studio
+      - name: 'Get OBS-Studio git info'
+        shell: bash
+        if: steps.cache-obs-build-macos.outputs.cache-hit != 'true'
+        working-directory: ${{ github.workspace }}/obs-studio
+        run: |
+          git fetch --prune --unshallow
+          echo ::set-env name=OBS_GIT_BRANCH::$(git rev-parse --abbrev-ref HEAD)
+          echo ::set-env name=OBS_GIT_HASH::$(git rev-parse --short HEAD)
+          echo ::set-env name=OBS_GIT_TAG::$(git describe --tags --abbrev=0)
+      - name: 'Checkout last OBS-Studio release (${{ env.OBS_GIT_TAG }})'
       - name: 'Install prerequisites (Homebrew)'
         if: steps.cache-obs-build-macos.outputs.cache-hit != 'true'
         shell: bash
@@ -78,8 +88,7 @@ jobs:
         shell: bash
         run: |
           cd ${{ github.workspace }}/obs-studio
-          OBSLatestTag=$(git describe --tags --abbrev=0)
-          git checkout $OBSLatestTag
+          git checkout ${{ env.OBS_GIT_TAG }}
           mkdir build && cd build
           echo "=> Building obs-studio.."
           cmake .. \
