@@ -57,7 +57,7 @@ jobs:
       - name: 'Install build dependencies'
         shell: bash
         run: |
-          curl -L -O https://github.com/obsproject/obs-deps/releases/download/${{ env.OSX_DEPS_VERSION }}/osx-deps-${{ env.OSX_DEPS_VERSION }}.tar.gz
+          curl -L -O https://github.com/obsproject/obs-deps/releases/download/${{ env.OSX_DEPS_VERSION }}/macos-deps-${{ env.OSX_DEPS_VERSION }}.tar.gz
           tar -xf ./osx-deps-${{ env.OSX_DEPS_VERSION }}.tar.gz -C "/tmp"
       - name: Cache Dependencies
         id: cache-obs-build-macos
