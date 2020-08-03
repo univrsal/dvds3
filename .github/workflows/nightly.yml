@@ -12,7 +12,7 @@ jobs:
     runs-on: [macos-latest]
     env:
       QT_VERSION: 5.14.1
-      OSX_DEPS_VERSION: '2020-06-07'
+      OSX_DEPS_VERSION: '2020-07-06'
       project-git: dvds3
       project-name: dvd-screensaver
     steps:
@@ -90,9 +90,9 @@ jobs:
           mkdir -p build && cd build
           cmake .. \
             -DQTDIR=/usr/local/opt/qt \
-            -DLIBOBS_INCLUDE_DIR=../obs-studio/libobs \
-            -DLIBOBS_LIB=../obs-studio/libobs \
-            -DOBS_FRONTEND_LIB="../obs-studio/build/UI/obs-frontend-api/libobs-frontend-api.dylib" \
+            -DLIBOBS_INCLUDE_DIR=${{ github.workspace }}/obs-studio/libobs \
+            -DLIBOBS_LIB=${{ github.workspace }}/obs-studio/libobs \
+            -DOBS_FRONTEND_LIB:STRING="${{ github.workspace }}/obs-studio/build/UI/obs-frontend-api/libobs-frontend-api.dylib" \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DCMAKE_INSTALL_PREFIX=/usr \
           && make -j4
@@ -116,16 +116,16 @@ jobs:
           -change /usr/local/opt/qt/lib/QtCore.framework/Versions/5/QtCore \
             @executable_path/../Frameworks/QtCore.framework/Versions/5/QtCore \
           ./build/${{ env.project-name }}.so
-          otool -L ./build/${{ env.project-name }}.so
+          otool -L ./build/lib${{ env.project-name }}.so
           packagesbuild ./package/installer-macOS.pkgproj
-          cd -
-          mv ../release/*.pkg ./release/=${{ env.project-name }}.macos.pkg
+          echo ::set-env name=GIT_TAG::$(git describe --tags --abbrev=0)
+          mv ../package/build/*.pkg ./package/${{ env.project-name }}.${{ env.GIT_TAG }}.macos.pkg
       - name: Publish
         if: success()
         uses: actions/upload-artifact@v2-preview
         with:
-          name: '${{ env.project-name }}.macos'
-          path: ./release/*.pkg 
+          name: '${{ env.project-name }}.${{ env.GIT_TAG }}.macos'
+          path: ./package/*.pkg 
   build-linux:
     name: 'Linux 64bit'
     runs-on: ubuntu-latest
@@ -178,7 +178,7 @@ jobs:
           export GIT_HASH=$(git rev-parse --short HEAD)
           export PKG_VERSION="1-$GIT_HASH-$GITHUB_REF-git"
           export GIT_VERSION=$(git describe --tags --abbrev=0)
-          
+          echo ::set-env name=GIT_TAG::$(git describe --tags --abbrev=0)
           [[ "$GITHUB_REF" =~ "^refs/tags/" ]] && export PKG_VERSION="$BRANCH_SHORT_NAME"
           cd ${{github.workspace}}/build
           echo "Packaging version ${PKG_VERSION}"
@@ -190,16 +190,16 @@ jobs:
             --pkgsource="https://github.com/$GITHUB_REPOSITORY" \
             --requires="obs-studio \(\>= ${{ env.obs-studio-version }}\)" \
             --pakdir="../package"
-          mv ../package/*.deb ../package/${{ env.project-name }}.linux.x64.deb
+          mv ../package/*.deb ../package/${{ env.project-name }}.${{ env.GIT_TAG }}.linux.x64.deb
     - name: Publish Linux binary
       uses: actions/upload-artifact@v2
       with:
-        name: ${{ env.project-name }}.linux.x64
+        name: ${{ env.project-name }}.${{ env.GIT_TAG }}.linux.x64
         path: ${{github.workspace}}/dist/**/*
     - name: Publish Linux installer
       uses: actions/upload-artifact@v2
       with:
-        name: ${{ env.project-name }}.installer.linux.x64
+        name: ${{ env.project-name }}.${{ env.GIT_TAG }}.linux.x64
         path: ${{github.workspace}}/package/*.deb
   windows:
     name: 'Windows 32/64bit'
@@ -358,5 +358,5 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v2-preview
         with:
-          name: '${{ env.project-name }}.${{ env.GIT_TAG }}.installer.windows'
+          name: '${{ env.project-name }}.${{ env.GIT_TAG }}.windows'
           path: ${{ github.workspace }}/${{ env.project-git }}/*.exe
