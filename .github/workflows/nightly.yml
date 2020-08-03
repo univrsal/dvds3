@@ -41,6 +41,7 @@ jobs:
         with:
           repository: obsproject/obs-studio
           submodules: 'recursive'
+          path: obs-studio
       - name: 'Install prerequisites (Homebrew)'
         if: steps.cache-obs-build-macos.outputs.cache-hit != 'true'
         shell: bash
@@ -193,15 +194,14 @@ jobs:
             --target install
           cd ${{github.workspace}}
           export GIT_HASH=$(git rev-parse --short HEAD)
-          export PKG_VERSION="1-$GIT_HASH-$GITHUB_REF-git"
+          export PKG_VERSION="1-$GIT_TAG-$GITHUB_REF-git"
           export GIT_VERSION=$(git describe --tags --abbrev=0)
-          echo ::set-env name=GIT_TAG::$(git describe --tags --abbrev=0)
           [[ "$GITHUB_REF" =~ "^refs/tags/" ]] && export PKG_VERSION="$BRANCH_SHORT_NAME"
           cd ${{github.workspace}}/build
           echo "Packaging version ${PKG_VERSION}"
           PAGER="cat" sudo checkinstall -y --type=debian --fstrans=no --nodoc \
             --backup=no --deldoc=yes --install=no \
-            --pkgname=${{ env.project-name }} --pkgversion="$GIT_VERSION" \
+            --pkgname=${{ env.project-name }} --pkgversion="$PKG_VERSION" \
             --pkglicense="GPLv2.0" --maintainer="${{ env.maintainer }}" \
             --pkggroup="video" \
             --pkgsource="https://github.com/$GITHUB_REPOSITORY" \
