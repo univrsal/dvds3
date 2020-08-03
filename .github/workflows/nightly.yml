@@ -21,9 +21,6 @@ jobs:
         with:
           path: ${{ github.workspace }}
           submodules: 'recursive'
-      - name: Fetch Git Tags
-        run: |
-          git fetch --prune --tags --unshallow
       - name: 'Get ${{ env.project-git }} git info'
         shell: bash
         working-directory: ${{ github.workspace }}
@@ -31,7 +28,7 @@ jobs:
           git fetch --prune --unshallow
           echo ::set-env name=GIT_BRANCH::${{ github.event.pull_request.head.ref }}
           echo ::set-env name=GIT_HASH::$(git rev-parse --short HEAD)
-          echo ::set-env name=GIT_TAG::$(git describe --tags --abbrev=0)  
+          echo ::set-env name=GIT_TAG::$(git describe --tags --abbrev=0)
       - name: Cache OBS build
         id: cache-obs-build-macos
         uses: actions/cache@v1
