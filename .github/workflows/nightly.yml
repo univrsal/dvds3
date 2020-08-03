@@ -16,21 +16,37 @@ jobs:
       project-git: dvds3
       project-name: dvd-screensaver
     steps:
-      - name: Checkout OBS
+      - name: Checkout plugin
         uses: actions/checkout@v2
         with:
-          repository: obsproject/obs-studio
-          submodules: 'recursive'
-      - name: Checkout
-        uses: actions/checkout@v2
-        with:
-          path: ${{ github.workspace }}/${{ env.project-git }}
+          path: ${{ github.workspace }}
           submodules: 'recursive'
       - name: Fetch Git Tags
         run: |
           cd ${{ github.workspace }}/${{ env.project-git }}
-          git fetch --prune --tags --unshallow  
+          git fetch --prune --tags --unshallow
+      - name: 'Get ${{ env.project-git }} git info'
+        shell: bash
+        working-directory: ${{ github.workspace }}/${{ env.project-git }}
+        run: |
+          git fetch --prune --unshallow
+          echo ::set-env name=GIT_BRANCH::${{ github.event.pull_request.head.ref }}
+          echo ::set-env name=GIT_HASH::$(git rev-parse --short HEAD)
+          echo ::set-env name=GIT_TAG::$(git describe --tags --abbrev=0)  
+      - name: Cache OBS build
+        id: cache-obs-build-macos
+        uses: actions/cache@v1
+        with:
+          path: obs-studio
+          key: obs-deps-macos
+      - name: Checkout OBS
+        if: steps.cache-obs-build-macos.outputs.cache-hit != 'true'
+        uses: actions/checkout@v2
+        with:
+          repository: obsproject/obs-studio
+          submodules: 'recursive'
       - name: 'Install prerequisites (Homebrew)'
+        if: steps.cache-obs-build-macos.outputs.cache-hit != 'true'
         shell: bash
         run: |
           brew update >/dev/null
@@ -49,27 +65,22 @@ jobs:
           brew install https://gist.githubusercontent.com/DDRBoxman/9c7a2b08933166f4b61ed9a44b242609/raw/ef4de6c587c6bd7f50210eccd5bd51ff08e6de13/qt.rb
           brew pin qt
       - name: 'Install Packages app'
-        if: success()
+        if: steps.cache-obs-build-macos.outputs.cache-hit != 'true'
         shell: bash
         run: |
           curl -L -O https://s3-us-west-2.amazonaws.com/obs-nightly/Packages.pkg
           sudo installer -pkg ./Packages.pkg -target /
       - name: 'Install build dependencies'
+        if: steps.cache-obs-build-macos.outputs.cache-hit != 'true'
         shell: bash
         run: |
           curl -L -O https://github.com/obsproject/obs-deps/releases/download/${{ env.OSX_DEPS_VERSION }}/macos-deps-${{ env.OSX_DEPS_VERSION }}.tar.gz
           tar -xf ./macos-deps-${{ env.OSX_DEPS_VERSION }}.tar.gz -C "/tmp"
-      - name: Cache Dependencies
-        id: cache-obs-build-macos
-        uses: actions/cache@v1
-        with:
-          path: obs-studio
-          key: obs-deps-macos
       - name: Configure and build OBS
         if: steps.cache-obs-build-macos.outputs.cache-hit != 'true'
         shell: bash
-        working-directory: ${{ github.workspace }}/obs-studio
         run: |
+          cd ${{ github.workspace }}/obs-studio
           OBSLatestTag=$(git describe --tags --abbrev=0)
           git checkout $OBSLatestTag
           mkdir build && cd build
@@ -84,8 +95,8 @@ jobs:
           && make -j4
       - name: Configure and build plugin
         shell: bash
-        working-directory: ${{ github.workspace }}
         run: |
+          cd ${{ github.workspace }}
           echo "=> Building plugin for macOS."
           mkdir -p build && cd build
           cmake .. \
@@ -131,10 +142,20 @@ jobs:
     runs-on: ubuntu-latest
     env:
       obs-studio-version: 25.0.8
-      project-name: dvd-screensaver 
+      project-name: dvd-screensaver
+      project-git: dvds3 
+      maintainer: uni@vrsal.cf 
     steps:
     - name: Checkout
       uses: actions/checkout@v2
+    - name: 'Get ${{ env.project-git }} git info'
+      shell: bash
+      working-directory: ${{ github.workspace }}/${{ env.project-git }}
+      run: |
+        git fetch --prune --unshallow
+        echo ::set-env name=GIT_BRANCH::${{ github.event.pull_request.head.ref }}
+        echo ::set-env name=GIT_HASH::$(git rev-parse --short HEAD)
+        echo ::set-env name=GIT_TAG::$(git describe --tags --abbrev=0)
     - name: Cache Dependencies
       id: cache-linux-deps
       uses: actions/cache@v1
