@@ -131,7 +131,7 @@ jobs:
             @executable_path/../Frameworks/QtGui.framework/Versions/5/QtGui \
           -change /usr/local/opt/qt/lib/QtCore.framework/Versions/5/QtCore \
             @executable_path/../Frameworks/QtCore.framework/Versions/5/QtCore \
-          ./build/${{ env.project-name }}.so
+          ./build/lib${{ env.project-name }}.so
           otool -L ./build/lib${{ env.project-name }}.so
           packagesbuild ./package/installer-macOS.pkgproj
           echo ::set-env name=GIT_TAG::$(git describe --tags --abbrev=0)
