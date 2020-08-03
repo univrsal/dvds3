@@ -135,7 +135,7 @@ jobs:
           otool -L ./build/lib${{ env.project-name }}.so
           packagesbuild ./package/installer-macOS.pkgproj
           echo ::set-env name=GIT_TAG::$(git describe --tags --abbrev=0)
-          mv ../package/build/*.pkg ./package/${{ env.project-name }}.${{ env.GIT_TAG }}.macos.pkg
+          mv ./package/build/*.pkg ./package/${{ env.project-name }}.${{ env.GIT_TAG }}.macos.pkg
       - name: Publish
         if: success()
         uses: actions/upload-artifact@v2-preview
@@ -224,7 +224,7 @@ jobs:
     - name: Publish Linux installer
       uses: actions/upload-artifact@v2
       with:
-        name: ${{ env.project-name }}.${{ env.GIT_TAG }}.linux.x64
+        name: ${{ env.project-name }}.${{ env.GIT_TAG }}.bin.linux.x64
         path: ${{github.workspace}}/package/*.deb
   windows:
     name: 'Windows 32/64bit'
@@ -377,7 +377,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v2-preview
         with:
-          name: '${{ env.project-name }}.${{ env.GIT_TAG }}.windows'
+          name: '${{ env.project-name }}.${{ env.GIT_TAG }}.bin.windows'
           path: ${{ github.workspace }}\${{ env.project-git }}\release\**\*
       - name: 'Publish Windows installer'
         if: success()
