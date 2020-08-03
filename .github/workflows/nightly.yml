@@ -1,9 +1,4 @@
-# This is a basic workflow to help you get started with Actions
-
 name: nightly
-
-# Controls when the action will run. Triggers the workflow on push or pull request
-# events but only for the master branch
 on:
   pull_request:
   push:
@@ -17,7 +12,7 @@ jobs:
     runs-on: [macos-latest]
     env:
       QT_VERSION: 5.14.1
-      OSX_DEPS_VERSION: '2020-04-07'
+      OSX_DEPS_VERSION: '2020-06-07'
       project-git: dvds3
       project-name: dvd-screensaver
     steps:
@@ -53,12 +48,15 @@ jobs:
           done
           brew install https://gist.githubusercontent.com/DDRBoxman/9c7a2b08933166f4b61ed9a44b242609/raw/ef4de6c587c6bd7f50210eccd5bd51ff08e6de13/qt.rb
           brew pin qt
-          HAS_PACKAGES=$(type packagesbuild 2>/dev/null)
-          if [ "${HAS_PACKAGES}" = "" ]; then
-              echo "=> Installing Packaging app (might require password due to 'sudo').."
-              curl -o './Packages.pkg' --retry-connrefused -s --retry-delay 1 'https://s3-us-west-2.amazonaws.com/obs-nightly/Packages.pkg'
-              sudo installer -pkg ./Packages.pkg -target /
-          fi
+      - name: 'Install Packages app'
+        if: success()
+        shell: bash
+        run: |
+          curl -L -O https://s3-us-west-2.amazonaws.com/obs-nightly/Packages.pkg
+          sudo installer -pkg ./Packages.pkg -target /
+      - name: 'Install build dependencies'
+        shell: bash
+        run: |
           curl -L -O https://github.com/obsproject/obs-deps/releases/download/${{ env.OSX_DEPS_VERSION }}/osx-deps-${{ env.OSX_DEPS_VERSION }}.tar.gz
           tar -xf ./osx-deps-${{ env.OSX_DEPS_VERSION }}.tar.gz -C "/tmp"
       - name: Cache Dependencies
