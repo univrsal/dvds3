@@ -40,7 +40,7 @@ jobs:
         run: |
           brew update >/dev/null
           BREW_PACKAGES=$(brew list)
-          BREW_DEPENDENCIES="jack speexdsp ccache swig mbedtls"
+          BREW_DEPENDENCIES="jack speexdsp cmake freetype fdk-aac ccache swig mbedtls"
 
           for DEPENDENCY in ${BREW_DEPENDENCIES}; do
               if echo "${BREW_PACKAGES}" | grep -q "^${DEPENDENCY}\$"; then
@@ -51,7 +51,7 @@ jobs:
                   brew install ${DEPENDENCY} 2>/dev/null
               fi
           done
-          brew install https://gist.githubusercontent.com/DDRBoxman/b3956fab6073335a4bf151db0dcbd4ad/raw/ed1342a8a86793ea8c10d8b4d712a654da121ace/qt.rb
+          brew install https://gist.githubusercontent.com/DDRBoxman/9c7a2b08933166f4b61ed9a44b242609/raw/ef4de6c587c6bd7f50210eccd5bd51ff08e6de13/qt.rb
           brew pin qt
           HAS_PACKAGES=$(type packagesbuild 2>/dev/null)
           if [ "${HAS_PACKAGES}" = "" ]; then
