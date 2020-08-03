@@ -51,7 +51,6 @@ jobs:
           echo ::set-env name=OBS_GIT_BRANCH::$(git rev-parse --abbrev-ref HEAD)
           echo ::set-env name=OBS_GIT_HASH::$(git rev-parse --short HEAD)
           echo ::set-env name=OBS_GIT_TAG::$(git describe --tags --abbrev=0)
-      - name: 'Checkout last OBS-Studio release (${{ env.OBS_GIT_TAG }})'
       - name: 'Install prerequisites (Homebrew)'
         if: steps.cache-obs-build-macos.outputs.cache-hit != 'true'
         shell: bash
