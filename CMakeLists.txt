@@ -19,6 +19,7 @@ option(GLOBAL_INSTALLATION "Whether to install for all users (default: OFF)" OFF
 
 include(${CMAKE_SOURCE_DIR}/cmake/ObsPluginHelpers.cmake)
 if (MSVC OR APPLE)
+    set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake")
     include(${CMAKE_SOURCE_DIR}/cmake/FindLibObs.cmake)
 endif()
 
@@ -37,11 +38,13 @@ configure_file(
 
 if(MSVC)
     set(dvd-screensaver_PLATFORM_DEPS
-        ${PTHREADS_LIB})
+        ${${W32_PTHREADS_LIB})})
 endif()
 
-if(UNIX)
+if(UNIX AND NOT APPLE)
     add_definitions(-DUNIX=1)
+    set(LIBOBS_LIB "libobs")
+    set(OBS_FRONTEND_LIB "obs-frontend-api")
 endif()
 
 if(APPLE)
@@ -69,7 +72,8 @@ include_directories(
 )
 
 target_link_libraries(dvd-screensaver
-    libobs
+    ${LIBOBS_LIB}
+#    ${OBS_FRONTEND_LIB}
 #    Qt5::Core
 #    Qt5::Widgets
     ${dvd-screensaver_PLATFORM_DEPS})
@@ -91,9 +95,6 @@ if(WIN32)
         "${LIBOBS_INCLUDE_DIR}"
     )
 
-    target_link_libraries(${CMAKE_PROJECT_NAME}
-        "${OBS_FRONTEND_LIB}"
-    )
     install_external_plugin_with_data(${CMAKE_PROJECT_NAME} "data")
 endif()
 
@@ -101,7 +102,6 @@ if(UNIX AND NOT APPLE)
     include(GNUInstallDirs)
 
     set_target_properties(dvd-screensaver PROPERTIES PREFIX "")
-    target_link_libraries(${CMAKE_PROJECT_NAME} obs-frontend-api)
 
     if (LOCAL_INSTALLATION)
         # Installs into home directory
@@ -138,8 +138,4 @@ elseif(APPLE)
         set(OBS_FRONTEND_LIB "OBS_FRONTEND_LIB-NOTFOUND" CACHE FILEPATH "OBS frontend library")
         message(FATAL_ERROR "Could not find OBS Frontend API\'s library !")
     endif()
-
-    target_link_libraries(${CMAKE_PROJECT_NAME}
-        "${OBS_FRONTEND_LIB}"
-    )
 endif()

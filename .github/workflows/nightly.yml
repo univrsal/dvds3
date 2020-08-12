@@ -107,7 +107,7 @@ jobs:
           cmake .. \
             -DQTDIR=/usr/local/opt/qt \
             -DLIBOBS_INCLUDE_DIR=${{ github.workspace }}/obs-studio/libobs \
-            -DLIBOBS_LIB=${{ github.workspace }}/obs-studio/libobs \
+            -DLIBOBS_LIB=${{ github.workspace }}/obs-studio/build/libobs/libobs.dylib \
             -DOBS_FRONTEND_LIB:STRING="${{ github.workspace }}/obs-studio/build/UI/obs-frontend-api/libobs-frontend-api.dylib" \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DCMAKE_INSTALL_PREFIX=/usr \
