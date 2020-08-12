@@ -17,9 +17,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(LOCAL_INSTALLATION "Whether to install for the current user (default: OFF)" OFF)
 option(GLOBAL_INSTALLATION "Whether to install for all users (default: OFF)" OFF)
 
+include(${CMAKE_SOURCE_DIR}/cmake/ObsPluginHelpers.cmake)
 if (MSVC OR APPLE)
     include(${CMAKE_SOURCE_DIR}/cmake/FindLibObs.cmake)
-    include(${CMAKE_SOURCE_DIR}/cmake/ObsPluginHelpers.cmake)
 endif()
 
 configure_file(
@@ -113,10 +113,10 @@ if(UNIX AND NOT APPLE)
     elseif(GLOBAL_INSTALLATION)
         # For *.deb installer
         install(TARGETS ${CMAKE_PROJECT_NAME}
-            LIBRARY DESTINATION "${CMAKE_INSTALL_FULL_LIBDIR}/obs-plugins")
+            LIBRARY DESTINATION "/usr/lib/obs-plugins") # Ubuntu apparently doesn't know the correct path
 
-        install(FILES ${locale_files}
-            DESTINATION "${CMAKE_INSTALL_FULL_DATAROOTDIR}/obs/obs-plugins/${CMAKE_PROJECT_NAME}/locale")
+        install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/data
+            DESTINATION "${CMAKE_INSTALL_FULL_DATAROOTDIR}/obs/obs-plugins/${CMAKE_PROJECT_NAME}")
     else()
         # For *.zip binary
         install(TARGETS ${CMAKE_PROJECT_NAME}
