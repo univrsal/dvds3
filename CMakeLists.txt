@@ -38,7 +38,7 @@ configure_file(
 
 if(MSVC)
     set(dvd-screensaver_PLATFORM_DEPS
-        ${${W32_PTHREADS_LIB})})
+        ${${W32_PTHREADS_LIB})
 endif()
 
 if(UNIX AND NOT APPLE)
