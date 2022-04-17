@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       obs-studio-version: 27.2.2
-      project-name: dvds3
+      project-name: dvd-screensaver
       project-git: dvds3
       maintainer: uni@vrsal.xyz
     steps:
@@ -115,7 +115,7 @@ jobs:
       CMAKE_SYSTEM_VERSION: "10.0"
       obs-studio-version: 5.15.2
       project-git: dvds3
-      project-name: dvds3
+      project-name: dvd-screensaver
     steps:
       - name: Add msbuild to PATH
         uses: microsoft/setup-msbuild@v1.0.2
