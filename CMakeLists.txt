@@ -3,8 +3,8 @@ project(dvd-screensaver VERSION 1.1.0)
 
 set(PLUGIN_AUTHOR "univrsal")
 set(PLUGIN_GIT dvds3)
-set(LINUX_MAINTAINER_EMAIL "uni@vrsal.cf")
-set(MACOS_BUNDLEID "cf.vrsal.dvds3")
+set(LINUX_MAINTAINER_EMAIL "uni@vrsal.xyz")
+set(MACOS_BUNDLEID "xyz.vrsal.dvds3")
 
 set(CMAKE_PREFIX_PATH "${QTDIR}")
 set(CMAKE_INCLUDE_CURRENT_DIR TRUE)
