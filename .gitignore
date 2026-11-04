@@ -1,1 +1,5 @@
 build**/
+package/installer-macOS.pkgproj
+package/installer-Windows.wxs
+package/LICENSE.rtf
+package/README.txt

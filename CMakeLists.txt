@@ -1,141 +1,97 @@
-cmake_minimum_required(VERSION 3.17)
-project(dvd-screensaver VERSION 1.1.0)
+cmake_minimum_required(VERSION 3.28)
+project(dvd-screensaver VERSION 1.1.0 LANGUAGES C)
 
 set(PLUGIN_AUTHOR "univrsal")
 set(PLUGIN_GIT dvds3)
 set(LINUX_MAINTAINER_EMAIL "uni@vrsal.xyz")
 set(MACOS_BUNDLEID "xyz.vrsal.dvds3")
 
-set(CMAKE_PREFIX_PATH "${QTDIR}")
-set(CMAKE_INCLUDE_CURRENT_DIR TRUE)
-set(CMAKE_INCLUDE_CURRENT_DIR ON)
-#set(CMAKE_AUTOMOC ON)
-#set(CMAKE_AUTOUIC ON)
-set(CMAKE_CXX_STANDARD 14)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
 option(LOCAL_INSTALLATION "Whether to install for the current user (default: OFF)" OFF)
 option(GLOBAL_INSTALLATION "Whether to install for all users (default: OFF)" OFF)
 
-include(${CMAKE_SOURCE_DIR}/cmake/ObsPluginHelpers.cmake)
-if (MSVC OR APPLE)
-    set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake")
-    include(${CMAKE_SOURCE_DIR}/cmake/FindLibObs.cmake)
+if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+    message(FATAL_ERROR "32-bit builds are not supported; configure for a 64-bit target (e.g. -A x64)")
 endif()
+set(OBS_ARCH_NAME "64bit")
 
 configure_file(
     package/installer-macOS.pkgproj.in
-    ../package/installer-macOS.pkgproj
+    ${CMAKE_SOURCE_DIR}/package/installer-macOS.pkgproj
 )
 configure_file(
-    package/installer-Windows.iss.in
-    ../package/installer-Windows.iss
+    package/installer-Windows.wxs.in
+    ${CMAKE_SOURCE_DIR}/package/installer-Windows.wxs
 )
+
+# WiX shows its license page as RTF: wrap COPYING.txt in a minimal RTF document
+file(READ "${CMAKE_SOURCE_DIR}/COPYING.txt" _license_text)
+string(REPLACE "\\" "\\\\" _license_text "${_license_text}")
+string(REPLACE "{" "\\{" _license_text "${_license_text}")
+string(REPLACE "}" "\\}" _license_text "${_license_text}")
+string(REPLACE "\r" "" _license_text "${_license_text}")
+string(REPLACE "\n" "\\par\n" _license_text "${_license_text}")
+file(WRITE "${CMAKE_SOURCE_DIR}/package/LICENSE.rtf"
+    "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Consolas;}}\\f0\\fs18\n${_license_text}}\n")
 configure_file(
     package/README.txt.in
-    ../package/README.txt
+    ${CMAKE_SOURCE_DIR}/package/README.txt
 )
 
-if(MSVC)
-    set(dvd-screensaver_PLATFORM_DEPS
-        ${W32_PTHREADS_LIB})
-endif()
+# The only dependency: libobs from OBS Studio 33+, via its exported CMake package.
+# Point libobs_DIR at <obs-install-prefix>/lib/cmake/libobs (or the build tree equivalent).
+find_package(libobs 33 REQUIRED)
+
+add_library(dvd-screensaver MODULE src/dvd.c)
+target_link_libraries(dvd-screensaver PRIVATE OBS::libobs)
 
 if(UNIX AND NOT APPLE)
-    add_definitions(-DUNIX=1)
-    set(LIBOBS_LIB "libobs")
-    set(OBS_FRONTEND_LIB "obs-frontend-api")
+    target_compile_definitions(dvd-screensaver PRIVATE UNIX=1)
+    set_target_properties(dvd-screensaver PROPERTIES PREFIX "")
 endif()
 
 if(APPLE)
-    add_definitions(-DMAC_OS=1)
+    target_compile_definitions(dvd-screensaver PRIVATE MAC_OS=1)
 endif()
 
-find_package(LibObs REQUIRED)
-#find_package(Qt5 REQUIRED COMPONENTS Core Widgets)
-
-set(dvd-screensaver_SOURCES
-    src/dvd.c)
-
-add_library(dvd-screensaver MODULE
-    ${dvd-screensaver_SOURCES})
-
-if (OBS_FRONTEND_INCLUDE)
-    include_directories(${OBS_FRONTEND_INCLUDE})
+if(MSVC)
+    # Enable multicore builds and disable FH4 (no VCRUNTIME140_1.DLL dependency)
+    target_compile_options(dvd-screensaver PRIVATE /MP /d2FH4-)
 endif()
 
-include_directories(
-    "${LIBOBS_INCLUDE_DIR}/../UI/obs-frontend-api"
-    ${LIBOBS_INCLUDE_DIR}
-#    ${Qt5Core_INCLUDES}
-#    ${Qt5Widgets_INCLUDES}
-)
+include(GNUInstallDirs)
 
-target_link_libraries(dvd-screensaver
-    ${LIBOBS_LIB}
-#    ${OBS_FRONTEND_LIB}
-#    Qt5::Core
-#    Qt5::Widgets
-    ${dvd-screensaver_PLATFORM_DEPS})
-
-
-# --- Windows-specific build settings and tasks ---
 if(WIN32)
-    if(NOT DEFINED OBS_FRONTEND_LIB)
-        set(OBS_FRONTEND_LIB "OBS_FRONTEND_LIB-NOTFOUND" CACHE FILEPATH "OBS frontend library")
-        message(FATAL_ERROR "Could not find OBS Frontend API\'s library !")
-    endif()
-
-    # Enable Multicore Builds and disable FH4 (to not depend on VCRUNTIME140_1.DLL when building with VS2019)
-    if (MSVC)
-        add_definitions(/MP /d2FH4-)
-    endif()
-
-    include_directories(
-        "${LIBOBS_INCLUDE_DIR}"
-    )
-
-    install_external_plugin_with_data(${CMAKE_PROJECT_NAME} "data")
-endif()
-
-if(UNIX AND NOT APPLE)
-    include(GNUInstallDirs)
-
-    set_target_properties(dvd-screensaver PROPERTIES PREFIX "")
-
-    if (LOCAL_INSTALLATION)
+    install(TARGETS dvd-screensaver
+        RUNTIME DESTINATION "obs-plugins/${OBS_ARCH_NAME}"
+        LIBRARY DESTINATION "obs-plugins/${OBS_ARCH_NAME}")
+    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/data/
+        DESTINATION "data/obs-plugins/${CMAKE_PROJECT_NAME}")
+elseif(UNIX AND NOT APPLE)
+    if(LOCAL_INSTALLATION)
         # Installs into home directory
-        install(TARGETS ${CMAKE_PROJECT_NAME}
+        install(TARGETS dvd-screensaver
             LIBRARY DESTINATION "$ENV{HOME}/.config/obs-studio/plugins/${CMAKE_PROJECT_NAME}/bin/${OBS_ARCH_NAME}")
-
         install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/data
             DESTINATION "$ENV{HOME}/.config/obs-studio/plugins/${CMAKE_PROJECT_NAME}/")
     elseif(GLOBAL_INSTALLATION)
         # For *.deb installer
-        install(TARGETS ${CMAKE_PROJECT_NAME}
+        install(TARGETS dvd-screensaver
             LIBRARY DESTINATION "/usr/lib/obs-plugins") # Ubuntu apparently doesn't know the correct path
-        
+
         file(GLOB locale_files data/locale/*.ini)
         file(GLOB other_files data/*.*)
-        
+
         install(FILES ${locale_files}
             DESTINATION "${CMAKE_INSTALL_FULL_DATAROOTDIR}/obs/obs-plugins/${CMAKE_PROJECT_NAME}/locale")
         install(FILES ${other_files}
-		    DESTINATION "${CMAKE_INSTALL_FULL_DATAROOTDIR}/obs/obs-plugins/${CMAKE_PROJECT_NAME}")
+            DESTINATION "${CMAKE_INSTALL_FULL_DATAROOTDIR}/obs/obs-plugins/${CMAKE_PROJECT_NAME}")
     else()
         # For *.zip binary
-        install(TARGETS ${CMAKE_PROJECT_NAME}
+        install(TARGETS dvd-screensaver
             LIBRARY DESTINATION "${CMAKE_PROJECT_NAME}/bin/${OBS_ARCH_NAME}")
-
         install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/data
             DESTINATION "${CMAKE_PROJECT_NAME}")
-        
         install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/package/README.txt"
             DESTINATION "${CMAKE_PROJECT_NAME}")
-    endif()
-elseif(APPLE)
-    if(NOT DEFINED OBS_FRONTEND_LIB)
-        set(OBS_FRONTEND_LIB "OBS_FRONTEND_LIB-NOTFOUND" CACHE FILEPATH "OBS frontend library")
-        message(FATAL_ERROR "Could not find OBS Frontend API\'s library !")
     endif()
 endif()

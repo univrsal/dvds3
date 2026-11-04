@@ -146,18 +146,18 @@ static void dvd_source_update(void *data, obs_data_t *settings)
 	/* Since obs_source_getwidth reports old values, we
 	 * get the image size here every time a new file is loaded
 	 */
-	gs_image_file_t temp;
+	gs_image_file_ex_t temp;
 	const char *file = obs_data_get_string(settings, "file");
 	const char *id = obs_data_get_string(settings, S_SOURCE_ID);
 	context->use_image = strcmp(id, S_SOURCE_IMAGE) == 0;
 
 	if (file && strlen(file) > 0) {
-		gs_image_file_init(&temp, file);
+		gs_image_file_ex_init(&temp, file, GS_IMAGE_ALPHA_PREMULTIPLY);
 		obs_enter_graphics();
-		gs_image_file_init_texture(&temp);
+		gs_image_file_ex_init_texture(&temp);
 		context->img_cx = temp.cx * context->scale;
 		context->img_cy = temp.cy * context->scale;
-		gs_image_file_free(&temp);
+		gs_image_file_ex_free(&temp);
 		obs_leave_graphics();
 	} else {
 		context->img_cx = obs_source_get_width(context->logo_source) *
@@ -306,15 +306,15 @@ bool image_path_changed(obs_properties_t *props, obs_property_t *p,
 	/* Since obs_source_getwidth reports old values, we
 	 * get the image size here every time a new file is loaded
 	 */
-	gs_image_file_t temp;
+	gs_image_file_ex_t temp;
 	char *file = obs_data_get_string(data, "file");
-	gs_image_file_init(&temp, file);
+	gs_image_file_ex_init(&temp, file, GS_IMAGE_ALPHA_PREMULTIPLY);
 
 	obs_enter_graphics();
-	gs_image_file_init_texture(&temp);
+	gs_image_file_ex_init_texture(&temp);
 	cx = temp.cx;
 	cy = temp.cy;
-	gs_image_file_free(&temp);
+	gs_image_file_ex_free(&temp);
 	obs_leave_graphics();
 
 	obs_property_int_set_limits(obs_properties_get(props, S_SOURCE_CX),
@@ -403,8 +403,8 @@ static obs_properties_t *dvd_source_properties(void *data)
 							0.10f, 1000.f, 0.25);
 			obs_properties_add_float_slider(props, S_SCALE, T_SCALE,
 							0.10f, 10.f, 0.25);
-			obs_properties_add_button(props, S_RESET, T_RESET,
-						  reset_logo_position);
+			obs_properties_add_button2(props, S_RESET, T_RESET,
+						   reset_logo_position, context);
 			obs_property_set_modified_callback(
 				obs_properties_get(props, "file"),
 				image_path_changed);

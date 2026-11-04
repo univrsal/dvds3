@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Windows installer for @CMAKE_PROJECT_NAME@ (WiX Toolset v4).
+  Installs the plugin into the OBS Studio folder, using the same layout as the zip package:
+    <obs>\obs-plugins\64bit\@CMAKE_PROJECT_NAME@.dll
+    <obs>\data\obs-plugins\@CMAKE_PROJECT_NAME@\...
+  Build with: wix build -ext WixToolset.UI.wixext -d PluginDll=... -d DataDir=... -d ReadmeFile=... -d LicenseRtf=...
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="@CMAKE_PROJECT_NAME@"
+           Manufacturer="@PLUGIN_AUTHOR@"
+           Version="@PROJECT_VERSION@"
+           UpgradeCode="E8CD2673-C243-426E-9131-4F9A70742740"
+           Scope="perMachine"
+           Compressed="yes"
+           InstallerVersion="500">
+
+    <SummaryInformation Description="@CMAKE_PROJECT_NAME@ plugin for OBS Studio" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Find the OBS Studio install folder (64-bit registry view). Falls back to the default location. -->
+    <Property Id="OBSINSTALLPATH">
+      <RegistrySearch Id="ObsInstallPathSearch" Root="HKLM" Key="SOFTWARE\OBS Studio" Type="raw" Bitness="always64" />
+    </Property>
+    <!-- Default the install folder to the registered OBS location when one exists (the package is x64, so this is the 64-bit view) -->
+    <!-- Only when OBSDIR was not given on the command line (msiexec OBSDIR=...) -->
+    <SetDirectory Id="OBSDIR" Value="[OBSINSTALLPATH]" Condition="OBSINSTALLPATH AND NOT OBSDIR" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <!-- Default folder when OBS is not registered; the installer's folder page can change it -->
+      <Directory Id="OBSDIR" Name="obs-studio">
+        <Directory Id="OBSPLUGINS" Name="obs-plugins">
+          <Directory Id="OBSPLUGINS64" Name="64bit">
+            <Component Id="PluginBinary" Guid="*">
+              <File Id="PluginDll" Source="$(var.PluginDll)" KeyPath="yes" />
+            </Component>
+          </Directory>
+        </Directory>
+
+        <Directory Id="OBSDATA" Name="data">
+          <Directory Id="OBSDATAPLUGINS" Name="obs-plugins">
+            <Directory Id="PLUGINDATADIR" Name="@CMAKE_PROJECT_NAME@">
+              <Component Id="PluginReadme" Guid="*">
+                <File Id="ReadmeTxt" Source="$(var.ReadmeFile)" KeyPath="yes" />
+              </Component>
+              <Component Id="PluginLogo" Guid="*">
+                <File Id="DvdPng" Source="$(var.DataDir)\dvd.png" KeyPath="yes" />
+              </Component>
+
+              <Directory Id="PLUGINLOCALEDIR" Name="locale">
+                <Component Id="PluginLocale" Guid="*">
+                  <File Id="EnUsIni" Source="$(var.DataDir)\locale\en-US.ini" KeyPath="yes" />
+                </Component>
+              </Directory>
+            </Directory>
+          </Directory>
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="Complete" Title="@CMAKE_PROJECT_NAME@" Level="1"
+             Description="The DVD screensaver source plugin for OBS Studio">
+      <ComponentRef Id="PluginBinary" />
+      <ComponentRef Id="PluginReadme" />
+      <ComponentRef Id="PluginLogo" />
+      <ComponentRef Id="PluginLocale" />
+    </Feature>
+
+    <!-- Standard install-folder wizard with GPL license page -->
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="OBSDIR" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.LicenseRtf)" />
+  </Package>
+</Wix>
