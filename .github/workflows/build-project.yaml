@@ -75,7 +75,7 @@ jobs:
 
   macos-build:
     name: Build for macOS 🍏
-    runs-on: macos-15
+    runs-on: macos-26
     needs: check-event
     defaults:
       run:
@@ -92,12 +92,14 @@ jobs:
           : Set Up Environment 🔧
           if (( ${+RUNNER_DEBUG} )) setopt XTRACE
 
-          print '::group::Enable Xcode 16.1'
+          # OBS Studio 33 requires Xcode 26.5 and the macOS 26.5 SDK, keep in sync with
+          # obs_macos_minimum_xcode in OBS' cmake/macos/compilerconfig.cmake
+          print '::group::Enable Xcode 26.5'
           # Fall back to the runner's default Xcode if this version was removed from the image
-          if [[ -d /Applications/Xcode_16.1.0.app ]] {
-            sudo xcode-select --switch /Applications/Xcode_16.1.0.app/Contents/Developer
+          if [[ -d /Applications/Xcode_26.5.app ]] {
+            sudo xcode-select --switch /Applications/Xcode_26.5.app/Contents/Developer
           } else {
-            print "::warning::Xcode 16.1 not found, using $(xcode-select -p)"
+            print "::warning::Xcode 26.5 not found, using $(xcode-select -p)"
           }
           print '::endgroup::'
 
