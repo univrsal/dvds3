@@ -1,5 +1,4 @@
-build**/
-build_*/
+/build*/
 release/
 .deps/
 *.generated.h
