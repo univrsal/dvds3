@@ -14,8 +14,105 @@
  * github.com/univrsal/dvds3
  */
 
-#include <graphics/image-file.h>
 #include <obs-module.h>
+#include <graphics/image-file.h>
+
+/* OBS Studio 33 replaced the gs_image_file functions with gs_image_file_ex */
+#if LIBOBS_API_MAJOR_VER >= 33
+typedef gs_image_file_ex_t dvd_image_t;
+#define dvd_image_init(img, file) \
+	gs_image_file_ex_init(img, file, GS_IMAGE_ALPHA_PREMULTIPLY)
+#define dvd_image_init_texture gs_image_file_ex_init_texture
+#define dvd_image_free gs_image_file_ex_free
+#define dvd_image_get(img) (img)
+#elif defined(_WIN32)
+typedef gs_image_file_t dvd_image_t;
+#define dvd_image_init gs_image_file_init
+#define dvd_image_init_texture gs_image_file_init_texture
+#define dvd_image_free gs_image_file_free
+#define dvd_image_get(img) (img)
+#else
+/* Built against OBS < 33 headers (e.g. the Ubuntu PPA), but the plugin may
+ * run on OBS 33+ where the gs_image_file functions were removed. Both the old
+ * and the new struct start with the same fields (texture, cx, cy, loaded...)
+ * and gs_image_file4 is larger than gs_image_file_ex, so we allocate that and
+ * look up the functions at runtime. Nothing may reference the removed symbols
+ * directly, or the plugin fails to load. */
+#include <dlfcn.h>
+
+typedef gs_image_file4_t dvd_image_t;
+#define dvd_image_get(img) (&(img)->image3.image2.image)
+
+static struct {
+	bool looked_up;
+	void (*init_ex)(void *, const char *, enum gs_image_alpha_mode);
+	void (*init)(void *, const char *);
+	void (*init_texture)(void *);
+	void (*free)(void *);
+} image_api;
+
+static void image_api_lookup(void)
+{
+	void *obs;
+
+	if (image_api.looked_up)
+		return;
+	image_api.looked_up = true;
+
+	/* The global symbol scope, which includes libobs. RTLD_DEFAULT would
+	 * require _GNU_SOURCE on glibc */
+	obs = dlopen(NULL, RTLD_LAZY);
+	image_api.init_ex = dlsym(obs, "gs_image_file_ex_init");
+	if (image_api.init_ex) {
+		image_api.init_texture =
+			dlsym(obs, "gs_image_file_ex_init_texture");
+		image_api.free = dlsym(obs, "gs_image_file_ex_free");
+	} else {
+		image_api.init = dlsym(obs, "gs_image_file_init");
+		image_api.init_texture =
+			dlsym(obs, "gs_image_file_init_texture");
+		image_api.free = dlsym(obs, "gs_image_file_free");
+	}
+}
+
+static void dvd_image_init(dvd_image_t *img, const char *file)
+{
+	image_api_lookup();
+	if (image_api.init_ex)
+		image_api.init_ex(img, file, GS_IMAGE_ALPHA_PREMULTIPLY);
+	else
+		image_api.init(img, file);
+}
+
+static void dvd_image_init_texture(dvd_image_t *img)
+{
+	image_api.init_texture(img);
+}
+
+static void dvd_image_free(dvd_image_t *img)
+{
+	image_api.free(img);
+}
+#endif
+
+/* Reads the size of an image file, returns false if it couldn't be loaded */
+static bool get_image_size(const char *file, uint32_t *cx, uint32_t *cy)
+{
+	dvd_image_t img;
+	bool loaded;
+
+	memset(&img, 0, sizeof(img));
+	dvd_image_init(&img, file);
+
+	obs_enter_graphics();
+	dvd_image_init_texture(&img);
+	loaded = dvd_image_get(&img)->loaded;
+	*cx = dvd_image_get(&img)->cx;
+	*cy = dvd_image_get(&img)->cy;
+	dvd_image_free(&img);
+	obs_leave_graphics();
+	return loaded;
+}
 
 #define blog(log_level, format, ...)                  \
 	blog(log_level, "[dvd_source: '%s'] " format, \
@@ -146,19 +243,15 @@ static void dvd_source_update(void *data, obs_data_t *settings)
 	/* Since obs_source_getwidth reports old values, we
 	 * get the image size here every time a new file is loaded
 	 */
-	gs_image_file_t temp;
 	const char *file = obs_data_get_string(settings, "file");
 	const char *id = obs_data_get_string(settings, S_SOURCE_ID);
 	context->use_image = strcmp(id, S_SOURCE_IMAGE) == 0;
 
 	if (file && strlen(file) > 0) {
-		gs_image_file_init(&temp, file);
-		obs_enter_graphics();
-		gs_image_file_init_texture(&temp);
-		context->img_cx = temp.cx * context->scale;
-		context->img_cy = temp.cy * context->scale;
-		gs_image_file_free(&temp);
-		obs_leave_graphics();
+		uint32_t cx = 0, cy = 0;
+		get_image_size(file, &cx, &cy);
+		context->img_cx = cx * context->scale;
+		context->img_cy = cy * context->scale;
 	} else {
 		context->img_cx = obs_source_get_width(context->logo_source) *
 				  context->scale;
@@ -306,16 +399,8 @@ bool image_path_changed(obs_properties_t *props, obs_property_t *p,
 	/* Since obs_source_getwidth reports old values, we
 	 * get the image size here every time a new file is loaded
 	 */
-	gs_image_file_t temp;
-	char *file = obs_data_get_string(data, "file");
-	gs_image_file_init(&temp, file);
-
-	obs_enter_graphics();
-	gs_image_file_init_texture(&temp);
-	cx = temp.cx;
-	cy = temp.cy;
-	gs_image_file_free(&temp);
-	obs_leave_graphics();
+	const char *file = obs_data_get_string(data, "file");
+	get_image_size(file, &cx, &cy);
 
 	obs_property_int_set_limits(obs_properties_get(props, S_SOURCE_CX),
 				    cx + 4, 0xffff, 1);

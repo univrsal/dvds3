@@ -1,1 +1,6 @@
 build**/
+build_*/
+release/
+.deps/
+*.generated.h
+cmake/.CMakeBuildNumber
