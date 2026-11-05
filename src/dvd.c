@@ -133,6 +133,7 @@ static bool get_image_size(const char *file, uint32_t *cx, uint32_t *cy)
 
 #define FILTER_NAME "dvd-filter"
 #define SOURCE_NAME "dvd-image"
+#define SCENE_NAME "dvd-scene"
 #define DVD_SOURCE_ID "dvds3_source"
 
 #define S_SOURCE_CX "source_cx"
@@ -163,11 +164,15 @@ struct dvd_source {
 	obs_source_t *logo_source;
 	obs_source_t *color_filter;
 
-	/* External source that is shown instead of the image. Written by the
-	 * UI thread and read by the graphics thread, so it's guarded by
-	 * other_mutex. */
-	obs_weak_source_t *other_source;
-	pthread_mutex_t other_mutex;
+	/* Private scene that contains the shown source (the logo or an
+	 * external source). The color filter is applied to the scene, so the
+	 * external source isn't modified, private sources aren't saved. */
+	obs_scene_t *scene;
+
+	/* The source that is currently in the scene. Written by the UI thread
+	 * and read by the graphics thread, so it's guarded by shown_mutex. */
+	obs_weak_source_t *shown_source;
+	pthread_mutex_t shown_mutex;
 
 	bool use_image;          /* False for custom src		*/
 	bool use_color;          /* Enable color filter		*/
@@ -208,72 +213,77 @@ static int rand_limit(int limit)
 	return retval;
 }
 
-/* Returns a new reference to the external source, if there is one */
-static obs_source_t *get_other_source(struct dvd_source *context)
+/* Returns a new reference to the shown source, if there is one */
+static obs_source_t *get_shown_source(struct dvd_source *context)
 {
 	obs_source_t *target;
 
-	pthread_mutex_lock(&context->other_mutex);
-	target = obs_weak_source_get_source(context->other_source);
-	pthread_mutex_unlock(&context->other_mutex);
+	pthread_mutex_lock(&context->shown_mutex);
+	target = obs_weak_source_get_source(context->shown_source);
+	pthread_mutex_unlock(&context->shown_mutex);
 	return target;
 }
 
-/* The color filter can only have one parent, so it's moved to whichever
- * source is currently shown */
-static void move_color_filter(struct dvd_source *context, obs_source_t *to)
+static void set_shown_source(struct dvd_source *context, obs_source_t *source)
 {
-	if (!context->color_filter)
-		return;
+	obs_weak_source_t *weak = obs_source_get_weak_source(source);
 
-	obs_source_t *parent = obs_filter_get_parent(context->color_filter);
-	if (parent == to)
-		return;
-	if (parent)
-		obs_source_filter_remove(parent, context->color_filter);
-	obs_source_filter_add(to, context->color_filter);
+	pthread_mutex_lock(&context->shown_mutex);
+	obs_weak_source_t *old = context->shown_source;
+	context->shown_source = weak;
+	pthread_mutex_unlock(&context->shown_mutex);
+
+	obs_weak_source_release(old);
 }
 
-static void remove_source(struct dvd_source *context)
+static bool remove_scene_item(obs_scene_t *scene, obs_sceneitem_t *item,
+			      void *param)
 {
-	obs_weak_source_t *weak;
-
-	pthread_mutex_lock(&context->other_mutex);
-	weak = context->other_source;
-	context->other_source = NULL;
-	pthread_mutex_unlock(&context->other_mutex);
-
-	obs_source_t *target = obs_weak_source_get_source(weak);
-	move_color_filter(context, context->logo_source);
-	if (target) {
-		obs_source_remove_active_child(context->source, target);
-		obs_source_release(target);
-	}
-	obs_weak_source_release(weak);
+	UNUSED_PARAMETER(scene);
+	UNUSED_PARAMETER(param);
+	/* The enumeration holds a reference to the item, so it can be removed */
+	obs_sceneitem_remove(item);
+	return true;
 }
 
-static bool add_source(struct dvd_source *context, const char *name)
+/* Replaces the content of the scene, returns false if the source can't be
+ * added, e.g. because it contains this source */
+static bool show_source(struct dvd_source *context, obs_source_t *source)
 {
-	bool result = false;
+	/* Settings change all the time (e.g. dragging the speed slider), don't
+	 * replace the scene item if it's already shown */
+	obs_source_t *shown = get_shown_source(context);
+	obs_source_release(shown);
+	if (source && shown == source)
+		return true;
+
+	/* Items of removed sources are pruned by the scene, so don't keep
+	 * pointers to them */
+	obs_scene_enum_items(context->scene, remove_scene_item, NULL);
+	set_shown_source(context, NULL);
+
+	if (!source)
+		return true;
+
+	if (!obs_scene_add(context->scene, source))
+		return false;
+
+	set_shown_source(context, source);
+	return true;
+}
+
+static void show_external_source(struct dvd_source *context, const char *name)
+{
 	obs_source_t *target = obs_get_source_by_name(name);
 
-	if (target) {
-		/* Fails if the source contains this source */
-		if (obs_source_add_active_child(context->source, target)) {
-			move_color_filter(context, target);
-
-			obs_weak_source_t *weak =
-				obs_source_get_weak_source(target);
-			pthread_mutex_lock(&context->other_mutex);
-			context->other_source = weak;
-			pthread_mutex_unlock(&context->other_mutex);
-			result = true;
-		} else {
-			warn("Can't add %s, as it would cause recursion", name);
-		}
-		obs_source_release(target);
+	if (!target) {
+		show_source(context, NULL);
+		return;
 	}
-	return result;
+
+	if (!show_source(context, target))
+		warn("Can't add %s, as it would cause recursion", name);
+	obs_source_release(target);
 }
 
 static void dvd_source_update(void *data, obs_data_t *settings)
@@ -295,13 +305,16 @@ static void dvd_source_update(void *data, obs_data_t *settings)
 	const char *id = obs_data_get_string(settings, S_SOURCE_ID);
 	context->use_image = strcmp(id, S_SOURCE_IMAGE) == 0;
 
-	remove_source(context);
-	if (!context->use_image && *id) {
+	if (context->use_image) {
+		show_source(context, context->logo_source);
+	} else if (*id) {
 		/* id is postfixed with 'e' so get rid of that */
 		char *name = bstrdup(id);
 		name[strlen(name) - 1] = '\0';
-		add_source(context, name);
+		show_external_source(context, name);
 		bfree(name);
+	} else {
+		show_source(context, NULL);
 	}
 }
 
@@ -323,8 +336,12 @@ static void dvd_source_destroy(void *data)
 {
 	struct dvd_source *context = data;
 
-	/* Also moves the color filter back from the external source */
-	remove_source(context);
+	/* Releases the external source */
+	show_source(context, NULL);
+
+	/* Destroying the scene also removes the color filter from it */
+	obs_source_remove(obs_scene_get_source(context->scene));
+	obs_scene_release(context->scene);
 
 	obs_source_remove(context->logo_source);
 	obs_source_release(context->logo_source);
@@ -334,7 +351,7 @@ static void dvd_source_destroy(void *data)
 		obs_source_release(context->color_filter);
 	}
 
-	pthread_mutex_destroy(&context->other_mutex);
+	pthread_mutex_destroy(&context->shown_mutex);
 	bfree(data);
 }
 
@@ -354,30 +371,26 @@ static void dvd_source_render(void *data, gs_effect_t *effect)
 {
 	UNUSED_PARAMETER(effect);
 	struct dvd_source *context = data;
-	obs_source_t *target = NULL;
+	obs_source_t *shown = get_shown_source(context);
 
-	if (context->use_image)
-		target = obs_source_get_ref(context->logo_source);
-	else
-		target = get_other_source(context);
-
-	if (!target)
+	if (!shown)
 		return;
 
 	/* The size of the shown source can change at any time (e.g. a new
 	 * image file was loaded, or a text source was edited) */
 	context->img_cx =
-		(uint32_t)(obs_source_get_width(target) * context->scale);
+		(uint32_t)(obs_source_get_width(shown) * context->scale);
 	context->img_cy =
-		(uint32_t)(obs_source_get_height(target) * context->scale);
+		(uint32_t)(obs_source_get_height(shown) * context->scale);
+	obs_source_release(shown);
 
+	/* The source is at the top left of the scene, the rest of it is
+	 * transparent */
 	gs_matrix_push();
 	gs_matrix_translate3f(context->pos.x, context->pos.y, 0.f);
 	gs_matrix_scale3f((float)context->scale, (float)context->scale, 1.f);
-	obs_source_video_render(target);
+	obs_source_video_render(obs_scene_get_source(context->scene));
 	gs_matrix_pop();
-
-	obs_source_release(target);
 }
 
 /* Moves the position along one axis and returns true if it hit an edge */
@@ -565,16 +578,18 @@ static void *dvd_source_create(obs_data_t *settings, obs_source_t *source)
 {
 	struct dvd_source *context = bzalloc(sizeof(struct dvd_source));
 	context->source = source;
-	pthread_mutex_init(&context->other_mutex, NULL);
+	pthread_mutex_init(&context->shown_mutex, NULL);
 
 	/* The image source shares the settings, so it picks up the file */
 	context->logo_source = obs_source_create_private(
 		"image_source", SOURCE_NAME, settings);
+	context->scene = obs_scene_create_private(SCENE_NAME);
 #ifndef MAC_OS
 	/* The filter gets its own settings, it's only updated from the tick */
 	context->color_filter =
 		obs_source_create_private("color_filter", FILTER_NAME, NULL);
-	move_color_filter(context, context->logo_source);
+	obs_source_filter_add(obs_scene_get_source(context->scene),
+			      context->color_filter);
 #endif
 
 	context->pos.x = 0;
@@ -589,12 +604,8 @@ static void *dvd_source_create(obs_data_t *settings, obs_source_t *source)
 static void dvd_enum_sources(void *data, obs_source_enum_proc_t cb, void *param)
 {
 	struct dvd_source *context = data;
-	cb(context->source, context->logo_source, param);
-	obs_source_t *target = get_other_source(context);
-	if (target) {
-		cb(context->source, target, param);
-		obs_source_release(target);
-	}
+	/* The scene takes care of its items */
+	cb(context->source, obs_scene_get_source(context->scene), param);
 }
 
 static struct obs_source_info dvd_source_info = {
