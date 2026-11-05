@@ -35,11 +35,11 @@ jobs:
 
           case "${GITHUB_EVENT_NAME}" in
             pull_request)
-              config_data=('codesign:false' 'notarize:false' 'package:false' 'config:RelWithDebInfo')
+              # Always build the installers, so PRs can be tested without building them locally
+              config_data=('codesign:false' 'notarize:false' 'package:true' 'config:RelWithDebInfo')
               if gh pr view ${{ github.event.number }} --json labels \
                 | jq -e -r '.labels[] | select(.name == "Seeking Testers")' > /dev/null; then
                 config_data[0]='codesign:true'
-                config_data[2]='package:true'
               fi
               ;;
             push)
