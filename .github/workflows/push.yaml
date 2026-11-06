@@ -76,6 +76,8 @@ jobs:
           # Artifacts are uploaded unzipped, so these are the files the build jobs created.
           # macOS debug symbols aren't attached to the release.
           for file in artifacts/**/*.@(exe|zip|pkg|deb|ddeb|tar.xz); do
+            # Artifact directories can be named like the file they hold (e.g. foo.pkg/foo.pkg)
+            [[ -f "${file}" ]] || continue
             [[ "${file}" == *-dSYMs.tar.xz ]] && continue
             mv "${file}" .
           done
