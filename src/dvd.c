@@ -14,8 +14,114 @@
  * github.com/univrsal/dvds3
  */
 
-#include <graphics/image-file.h>
 #include <obs-module.h>
+#include <graphics/image-file.h>
+#include <util/dstr.h>
+#include <util/threading.h>
+
+/* OBS Studio 33 replaced the gs_image_file functions with gs_image_file_ex */
+#if LIBOBS_API_MAJOR_VER >= 33
+typedef gs_image_file_ex_t dvd_image_t;
+#define dvd_image_init(img, file) \
+	gs_image_file_ex_init(img, file, GS_IMAGE_ALPHA_PREMULTIPLY)
+#define dvd_image_init_texture gs_image_file_ex_init_texture
+#define dvd_image_free gs_image_file_ex_free
+#define dvd_image_get(img) (img)
+#elif defined(_WIN32)
+typedef gs_image_file_t dvd_image_t;
+#define dvd_image_init gs_image_file_init
+#define dvd_image_init_texture gs_image_file_init_texture
+#define dvd_image_free gs_image_file_free
+#define dvd_image_get(img) (img)
+#else
+/* Built against OBS < 33 headers (e.g. the Ubuntu PPA), but the plugin may
+ * run on OBS 33+ where the gs_image_file functions were removed. Both the old
+ * and the new struct start with the same fields (texture, cx, cy, loaded...)
+ * and gs_image_file4 is larger than gs_image_file_ex, so we allocate that and
+ * look up the functions at runtime. Nothing may reference the removed symbols
+ * directly, or the plugin fails to load. */
+#include <dlfcn.h>
+
+typedef gs_image_file4_t dvd_image_t;
+#define dvd_image_get(img) (&(img)->image3.image2.image)
+
+static struct {
+	bool looked_up;
+	void (*init_ex)(void *, const char *, enum gs_image_alpha_mode);
+	void (*init)(void *, const char *);
+	void (*init_texture)(void *);
+	void (*free)(void *);
+} image_api;
+
+static void image_api_lookup(void)
+{
+	void *obs;
+
+	if (image_api.looked_up)
+		return;
+	image_api.looked_up = true;
+
+	/* The global symbol scope, which includes libobs. RTLD_DEFAULT would
+	 * require _GNU_SOURCE on glibc */
+	obs = dlopen(NULL, RTLD_LAZY);
+	image_api.init_ex = dlsym(obs, "gs_image_file_ex_init");
+	if (image_api.init_ex) {
+		image_api.init_texture =
+			dlsym(obs, "gs_image_file_ex_init_texture");
+		image_api.free = dlsym(obs, "gs_image_file_ex_free");
+	} else {
+		image_api.init = dlsym(obs, "gs_image_file_init");
+		image_api.init_texture =
+			dlsym(obs, "gs_image_file_init_texture");
+		image_api.free = dlsym(obs, "gs_image_file_free");
+	}
+}
+
+static void dvd_image_init(dvd_image_t *img, const char *file)
+{
+	image_api_lookup();
+	if (image_api.init_ex)
+		image_api.init_ex(img, file, GS_IMAGE_ALPHA_PREMULTIPLY);
+	else
+		image_api.init(img, file);
+}
+
+static void dvd_image_init_texture(dvd_image_t *img)
+{
+	image_api.init_texture(img);
+}
+
+static void dvd_image_free(dvd_image_t *img)
+{
+	image_api.free(img);
+}
+#endif
+
+/* Reads the size of an image file, returns false if it couldn't be loaded */
+static bool get_image_size(const char *file, uint32_t *cx, uint32_t *cy)
+{
+	dvd_image_t img;
+	bool loaded;
+
+	*cx = 0;
+	*cy = 0;
+	if (!file || !*file)
+		return false;
+
+	/* The size is known after decoding, no need to upload a texture */
+	memset(&img, 0, sizeof(img));
+	dvd_image_init(&img, file);
+	loaded = dvd_image_get(&img)->loaded;
+	if (loaded) {
+		*cx = dvd_image_get(&img)->cx;
+		*cy = dvd_image_get(&img)->cy;
+	}
+
+	obs_enter_graphics();
+	dvd_image_free(&img);
+	obs_leave_graphics();
+	return loaded;
+}
 
 #define blog(log_level, format, ...)                  \
 	blog(log_level, "[dvd_source: '%s'] " format, \
@@ -27,6 +133,7 @@
 
 #define FILTER_NAME "dvd-filter"
 #define SOURCE_NAME "dvd-image"
+#define SCENE_NAME "dvd-scene"
 #define DVD_SOURCE_ID "dvds3_source"
 
 #define S_SOURCE_CX "source_cx"
@@ -37,6 +144,8 @@
 #define S_RESET "reset"
 #define S_SOURCE_ID "source_id"
 #define S_SOURCE_IMAGE "image_source"
+#define S_FILE "file"
+#define S_HUE_SHIFT "hue_shift"
 
 #define _T(t) obs_module_text(t)
 #define T_SOURCE_CX _T("DVDSource.Width")
@@ -53,17 +162,26 @@
 struct dvd_source {
 	obs_source_t *source;
 	obs_source_t *logo_source;
-	obs_weak_source_t *other_source;
 	obs_source_t *color_filter;
 
-	bool use_image;          /* False for custom src */
-	bool use_color;          /* Enable color filter	*/
-	uint32_t cx, cy;         /* Source size		*/
-	uint32_t img_cx, img_cy; /* Scaled image size	*/
-	struct vec2 pos;         /* Image position	*/
-	int8_t d_x, d_y;         /* Movement vector	*/
-	struct vec4 color;       /* Color		*/
-	double scale, speed;     /* Image scale/speed	*/
+	/* Private scene that contains the shown source (the logo or an
+	 * external source). The color filter is applied to the scene, so the
+	 * external source isn't modified, private sources aren't saved. */
+	obs_scene_t *scene;
+
+	/* The source that is currently in the scene. Written by the UI thread
+	 * and read by the graphics thread, so it's guarded by shown_mutex. */
+	obs_weak_source_t *shown_source;
+	pthread_mutex_t shown_mutex;
+
+	bool use_image;          /* False for custom src		*/
+	bool use_color;          /* Enable color filter		*/
+	uint32_t cx, cy;         /* Source size			*/
+	uint32_t img_cx, img_cy; /* Scaled size of the shown source	*/
+	struct vec2 pos;         /* Image position		*/
+	int8_t d_x, d_y;         /* Movement vector		*/
+	double scale, speed;     /* Image scale/speed		*/
+	double hue_shift;        /* Current color filter hue shift	*/
 };
 
 struct enum_param {
@@ -77,8 +195,14 @@ static const char *dvd_source_get_name(void *unused)
 	return T_SOURCE;
 }
 
+/* Random number in [0, limit] */
 static int rand_limit(int limit)
 {
+	if (limit <= 0)
+		return 0;
+	if (limit >= RAND_MAX)
+		limit = RAND_MAX - 1;
+
 	int divisor = RAND_MAX / (limit + 1);
 	int retval;
 
@@ -89,51 +213,85 @@ static int rand_limit(int limit)
 	return retval;
 }
 
-static void remove_source(struct dvd_source *context)
+/* Returns a new reference to the shown source, if there is one */
+static obs_source_t *get_shown_source(struct dvd_source *context)
 {
-	obs_source_t *target =
-		obs_weak_source_get_source(context->other_source);
-	if (target) {
-		obs_source_filter_remove(target, context->color_filter);
-		obs_source_remove_active_child(context->source, target);
-		obs_source_release(target);
-	}
+	obs_source_t *target;
 
-	if (context->other_source) {
-		obs_weak_source_release(context->other_source);
-		context->other_source = NULL;
-	}
-	obs_source_add_active_child(context->source, context->logo_source);
+	pthread_mutex_lock(&context->shown_mutex);
+	target = obs_weak_source_get_source(context->shown_source);
+	pthread_mutex_unlock(&context->shown_mutex);
+	return target;
 }
 
-static bool add_source(struct dvd_source *context, const char *id)
+static void set_shown_source(struct dvd_source *context, obs_source_t *source)
 {
-	bool result = true;
-	obs_source_t *target = obs_get_source_by_name(id);
-	if (target) {
-		context->other_source = obs_source_get_weak_source(target);
-		context->img_cx = obs_source_get_width(target) * context->scale;
-		context->img_cy =
-			obs_source_get_height(target) * context->scale;
-		obs_source_filter_add(target, context->color_filter);
-		obs_source_remove_active_child(context->source,
-					       context->logo_source);
-		if (!obs_source_add_active_child(context->source, target)) {
-			result = false;
-			remove_source(context);
-			warn("Can't add %s, as it would cause recursion", id);
-		}
-		obs_source_release(target);
+	obs_weak_source_t *weak = obs_source_get_weak_source(source);
+
+	pthread_mutex_lock(&context->shown_mutex);
+	obs_weak_source_t *old = context->shown_source;
+	context->shown_source = weak;
+	pthread_mutex_unlock(&context->shown_mutex);
+
+	obs_weak_source_release(old);
+}
+
+static bool remove_scene_item(obs_scene_t *scene, obs_sceneitem_t *item,
+			      void *param)
+{
+	UNUSED_PARAMETER(scene);
+	UNUSED_PARAMETER(param);
+	/* The enumeration holds a reference to the item, so it can be removed */
+	obs_sceneitem_remove(item);
+	return true;
+}
+
+/* Replaces the content of the scene, returns false if the source can't be
+ * added, e.g. because it contains this source */
+static bool show_source(struct dvd_source *context, obs_source_t *source)
+{
+	/* Settings change all the time (e.g. dragging the speed slider), don't
+	 * replace the scene item if it's already shown */
+	obs_source_t *shown = get_shown_source(context);
+	obs_source_release(shown);
+	if (source && shown == source)
+		return true;
+
+	/* Items of removed sources are pruned by the scene, so don't keep
+	 * pointers to them */
+	obs_scene_enum_items(context->scene, remove_scene_item, NULL);
+	set_shown_source(context, NULL);
+
+	if (!source)
+		return true;
+
+	if (!obs_scene_add(context->scene, source))
+		return false;
+
+	set_shown_source(context, source);
+	return true;
+}
+
+static void show_external_source(struct dvd_source *context, const char *name)
+{
+	obs_source_t *target = obs_get_source_by_name(name);
+
+	if (!target) {
+		show_source(context, NULL);
+		return;
 	}
-	return result;
+
+	if (!show_source(context, target))
+		warn("Can't add %s, as it would cause recursion", name);
+	obs_source_release(target);
 }
 
 static void dvd_source_update(void *data, obs_data_t *settings)
 {
 	struct dvd_source *context = data;
 
-	context->cx = obs_data_get_int(settings, S_SOURCE_CX);
-	context->cy = obs_data_get_int(settings, S_SOURCE_CY);
+	context->cx = (uint32_t)obs_data_get_int(settings, S_SOURCE_CX);
+	context->cy = (uint32_t)obs_data_get_int(settings, S_SOURCE_CY);
 	context->scale = obs_data_get_double(settings, S_SCALE);
 	context->speed = obs_data_get_double(settings, S_SPEED);
 	context->use_color = obs_data_get_bool(settings, S_COLOR);
@@ -143,41 +301,20 @@ static void dvd_source_update(void *data, obs_data_t *settings)
 #endif
 
 	obs_source_update(context->logo_source, settings);
-	/* Since obs_source_getwidth reports old values, we
-	 * get the image size here every time a new file is loaded
-	 */
-	gs_image_file_t temp;
-	const char *file = obs_data_get_string(settings, "file");
+
 	const char *id = obs_data_get_string(settings, S_SOURCE_ID);
 	context->use_image = strcmp(id, S_SOURCE_IMAGE) == 0;
 
-	if (file && strlen(file) > 0) {
-		gs_image_file_init(&temp, file);
-		obs_enter_graphics();
-		gs_image_file_init_texture(&temp);
-		context->img_cx = temp.cx * context->scale;
-		context->img_cy = temp.cy * context->scale;
-		gs_image_file_free(&temp);
-		obs_leave_graphics();
-	} else {
-		context->img_cx = obs_source_get_width(context->logo_source) *
-				  context->scale;
-		context->img_cy = obs_source_get_height(context->logo_source) *
-				  context->scale;
-	}
-
 	if (context->use_image) {
-		remove_source(context);
+		show_source(context, context->logo_source);
+	} else if (*id) {
+		/* id is postfixed with 'e' so get rid of that */
+		char *name = bstrdup(id);
+		name[strlen(name) - 1] = '\0';
+		show_external_source(context, name);
+		bfree(name);
 	} else {
-		/* id is still postfixed with 'e' so get rid of that */
-		char *cpy = bstrdup(id);
-		int index = strlen(cpy) - 1;
-		if (index > 0)
-			cpy[index] = '\0';
-		remove_source(context);
-
-		add_source(context, cpy);
-		bfree(cpy);
+		show_source(context, NULL);
 	}
 }
 
@@ -190,22 +327,31 @@ static void dvd_source_defaults(obs_data_t *settings)
 
 	obs_data_set_default_bool(settings, S_COLOR, true);
 	char *path = obs_module_file("dvd.png");
-	obs_data_set_default_string(settings, "file", path);
-	obs_data_set_default_string(settings, S_SOURCE_ID, T_SOURCE_IMAGE);
+	obs_data_set_default_string(settings, S_FILE, path);
+	obs_data_set_default_string(settings, S_SOURCE_ID, S_SOURCE_IMAGE);
 	bfree(path);
 }
 
 static void dvd_source_destroy(void *data)
 {
 	struct dvd_source *context = data;
-	remove_source(context);
+
+	/* Releases the external source */
+	show_source(context, NULL);
+
+	/* Destroying the scene also removes the color filter from it */
+	obs_source_remove(obs_scene_get_source(context->scene));
+	obs_scene_release(context->scene);
+
 	obs_source_remove(context->logo_source);
 	obs_source_release(context->logo_source);
 
-#ifndef MAC_OS
-	obs_source_remove(context->color_filter);
-	obs_source_release(context->color_filter);
-#endif
+	if (context->color_filter) {
+		obs_source_remove(context->color_filter);
+		obs_source_release(context->color_filter);
+	}
+
+	pthread_mutex_destroy(&context->shown_mutex);
 	bfree(data);
 }
 
@@ -223,99 +369,106 @@ static uint32_t dvd_source_getheight(void *data)
 
 static void dvd_source_render(void *data, gs_effect_t *effect)
 {
+	UNUSED_PARAMETER(effect);
 	struct dvd_source *context = data;
-	if (obs_source_showing(context->source)) {
-		obs_source_t *target = NULL;
-		bool free = false;
-		if (context->use_image) {
-			target = context->logo_source;
-		} else if (context->other_source) {
-			target = obs_weak_source_get_source(
-				context->other_source);
-			free = true;
-		}
+	obs_source_t *shown = get_shown_source(context);
 
-		if (target) {
-			gs_matrix_push();
-			gs_matrix_translate3f(context->pos.x, context->pos.y,
-					      0.f);
-			gs_matrix_scale3f(context->scale, context->scale, 1.f);
-			obs_source_video_render(target);
-			gs_matrix_pop();
-		}
+	if (!shown)
+		return;
 
-		if (free)
-			obs_source_release(target);
+	/* The size of the shown source can change at any time (e.g. a new
+	 * image file was loaded, or a text source was edited) */
+	context->img_cx =
+		(uint32_t)(obs_source_get_width(shown) * context->scale);
+	context->img_cy =
+		(uint32_t)(obs_source_get_height(shown) * context->scale);
+	obs_source_release(shown);
+
+	/* The source is at the top left of the scene, the rest of it is
+	 * transparent */
+	gs_matrix_push();
+	gs_matrix_translate3f(context->pos.x, context->pos.y, 0.f);
+	gs_matrix_scale3f((float)context->scale, (float)context->scale, 1.f);
+	obs_source_video_render(obs_scene_get_source(context->scene));
+	gs_matrix_pop();
+}
+
+/* Moves the position along one axis and returns true if it hit an edge */
+static bool move_axis(float *pos, int8_t *dir, float delta, float max)
+{
+	/* The image doesn't fit, so there's nowhere to move */
+	if (max <= 0.f) {
+		*pos = 0.f;
+		return false;
 	}
+
+	*pos += delta;
+	if (*pos <= 0.f) {
+		*pos = 0.f;
+		*dir = 1;
+		return true;
+	}
+	if (*pos >= max) {
+		*pos = max;
+		*dir = -1;
+		return true;
+	}
+	return false;
 }
 
 static void dvd_source_tick(void *data, float seconds)
 {
 	struct dvd_source *context = data;
 
-	if (obs_source_showing(context->source)) {
-		float d_x = seconds * (context->d_x * context->speed);
-		float d_y = seconds * (context->d_y * context->speed);
+	if (!obs_source_showing(context->source))
+		return;
 
-		bool bounce = false;
+	float max_x = (float)context->cx - (float)context->img_cx;
+	float max_y = (float)context->cy - (float)context->img_cy;
+	float d_x = seconds * (float)(context->d_x * context->speed);
+	float d_y = seconds * (float)(context->d_y * context->speed);
 
-		if (context->pos.x + d_x + context->img_cx >= context->cx ||
-		    context->pos.x + d_x <= 0) {
-			context->d_x *= -1;
-			bounce = true;
-		} else {
-			context->pos.x += d_x;
-		}
+	/* Not short circuited, both axes have to move */
+	bool bounce = move_axis(&context->pos.x, &context->d_x, d_x, max_x);
+	bounce |= move_axis(&context->pos.y, &context->d_y, d_y, max_y);
 
-		if (context->pos.y + d_y + context->img_cy >= context->cy ||
-		    context->pos.y + d_y <= 0) {
-			context->d_y *= -1;
-			bounce = true;
-		} else {
-			context->pos.y += d_y;
-		}
 #ifndef MAC_OS
-		if (bounce) /* Shift color for each bounce */ {
-			obs_data_t *settings =
-				obs_source_get_settings(context->color_filter);
-			double val =
-				obs_data_get_double(settings, "hue_shift") +
-				45.f;
-			if (val > 180.f)
-				val = -180.f + 45.f;
-			obs_data_set_double(settings, "hue_shift", val);
-			obs_source_update(context->color_filter, settings);
-			obs_data_release(settings);
-		}
-#endif
+	if (bounce && context->use_color) {
+		/* Shift color for each bounce */
+		context->hue_shift += 45.0;
+		if (context->hue_shift > 180.0)
+			context->hue_shift = -180.0 + 45.0;
+
+		obs_data_t *settings = obs_data_create();
+		obs_data_set_double(settings, S_HUE_SHIFT, context->hue_shift);
+		obs_source_update(context->color_filter, settings);
+		obs_data_release(settings);
 	}
+#else
+	UNUSED_PARAMETER(bounce);
+#endif
 }
 
-bool use_color_shift_changed(obs_properties_t *props, obs_property_t *p,
-			     obs_data_t *data)
+static bool use_color_shift_changed(obs_properties_t *props,
+				    obs_property_t *p, obs_data_t *data)
 {
+	UNUSED_PARAMETER(props);
+	UNUSED_PARAMETER(p);
+	UNUSED_PARAMETER(data);
 	/* Returning true forces an update */
 	return true;
 }
 
-bool image_path_changed(obs_properties_t *props, obs_property_t *p,
-			obs_data_t *data)
+static bool image_path_changed(obs_properties_t *props, obs_property_t *p,
+			       obs_data_t *data)
 {
+	UNUSED_PARAMETER(p);
 	uint32_t cx = 0, cy = 0;
 
 	/* Since obs_source_getwidth reports old values, we
 	 * get the image size here every time a new file is loaded
 	 */
-	gs_image_file_t temp;
-	char *file = obs_data_get_string(data, "file");
-	gs_image_file_init(&temp, file);
-
-	obs_enter_graphics();
-	gs_image_file_init_texture(&temp);
-	cx = temp.cx;
-	cy = temp.cy;
-	gs_image_file_free(&temp);
-	obs_leave_graphics();
+	get_image_size(obs_data_get_string(data, S_FILE), &cx, &cy);
 
 	obs_property_int_set_limits(obs_properties_get(props, S_SOURCE_CX),
 				    cx + 4, 0xffff, 1);
@@ -323,12 +476,18 @@ bool image_path_changed(obs_properties_t *props, obs_property_t *p,
 				    cy + 4, 0xffff, 1);
 	return true;
 }
+
 static bool reset_logo_position(obs_properties_t *props,
 				obs_property_t *property, void *data)
 {
+	UNUSED_PARAMETER(props);
+	UNUSED_PARAMETER(property);
 	struct dvd_source *context = data;
-	context->pos.x = rand_limit(context->cx - context->img_cx);
-	context->pos.y = rand_limit(context->cx - context->img_cy);
+	int max_x = (int)context->cx - (int)context->img_cx;
+	int max_y = (int)context->cy - (int)context->img_cy;
+
+	context->pos.x = (float)rand_limit(max_x);
+	context->pos.y = (float)rand_limit(max_y);
 	context->d_x = rand_limit(1) == 0 ? -1 : 1;
 	context->d_y = rand_limit(1) == 0 ? -1 : 1;
 	return true;
@@ -343,30 +502,29 @@ static bool dvd_enum_global_sources(void *param, obs_source_t *current)
 	if (data->this == current || (flags & OBS_SOURCE_VIDEO) == 0 ||
 	    strcmp(name, SOURCE_NAME) == 0 || strcmp(id, DVD_SOURCE_ID) == 0)
 		return true;
-	char *tmp = bzalloc(512);
-	char *tmp2 = bzalloc(512);
 
-	strcat(tmp, T_EXTERNAL_SOURCE);
-	strcat(tmp, " ");
-	strcat(tmp, name);
+	struct dstr label = {0};
+	struct dstr value = {0};
 
-	strcat(tmp2, name);
-	strcat(tmp2,
-	       "e"); /* Every external source get's a postfix to distinguish it from
-			     the internal 'Image' option, to prevent confusion between a
-			     source named 'Image' and the actual 'Image' option */
-	obs_property_list_add_string(data->list, tmp, tmp2);
-	bfree(tmp);
-	bfree(tmp2);
+	dstr_printf(&label, "%s %s", T_EXTERNAL_SOURCE, name);
+	/* Every external source gets a postfix to distinguish it from the
+	 * internal 'Image' option, to prevent confusion between a source
+	 * named 'Image' and the actual 'Image' option */
+	dstr_printf(&value, "%se", name);
+	obs_property_list_add_string(data->list, label.array, value.array);
+
+	dstr_free(&label);
+	dstr_free(&value);
 	return true;
 }
 
 static bool source_changed(obs_properties_t *props, obs_property_t *prop,
 			   obs_data_t *data)
 {
-	char *val = obs_data_get_string(data, S_SOURCE_ID);
+	UNUSED_PARAMETER(prop);
+	const char *val = obs_data_get_string(data, S_SOURCE_ID);
 	bool vis = strcmp(val, S_SOURCE_IMAGE) == 0;
-	obs_property_t *path = obs_properties_get(props, "file");
+	obs_property_t *path = obs_properties_get(props, S_FILE);
 
 	obs_property_set_visible(path, vis);
 	return true;
@@ -375,89 +533,79 @@ static bool source_changed(obs_properties_t *props, obs_property_t *prop,
 static obs_properties_t *dvd_source_properties(void *data)
 {
 	struct dvd_source *context = data;
-	if (context) {
-		obs_properties_t *props =
-			obs_source_properties(context->logo_source);
-		if (props) {
-			obs_property_t *list = obs_properties_add_list(
-				props, S_SOURCE_ID, T_SOURCE_ID,
-				OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
-			obs_property_list_add_string(list, T_SOURCE_IMAGE,
-						     S_SOURCE_IMAGE);
-			struct enum_param e;
-			e.list = list;
-			e.this = context->source;
+	if (!context)
+		return NULL;
 
-			obs_property_set_modified_callback(list,
-							   source_changed);
-			obs_enum_sources(dvd_enum_global_sources, &e);
+	obs_properties_t *props = obs_source_properties(context->logo_source);
+	if (!props)
+		return NULL;
+
+	obs_property_t *list = obs_properties_add_list(props, S_SOURCE_ID,
+						       T_SOURCE_ID,
+						       OBS_COMBO_TYPE_LIST,
+						       OBS_COMBO_FORMAT_STRING);
+	obs_property_list_add_string(list, T_SOURCE_IMAGE, S_SOURCE_IMAGE);
+	struct enum_param e;
+	e.list = list;
+	e.this = context->source;
+
+	obs_property_set_modified_callback(list, source_changed);
+	obs_enum_sources(dvd_enum_global_sources, &e);
 
 #ifndef MAC_OS
-			obs_properties_add_bool(props, S_COLOR, T_COLOR);
+	obs_properties_add_bool(props, S_COLOR, T_COLOR);
 #endif
-			obs_properties_add_int(props, S_SOURCE_CX, T_SOURCE_CX,
-					       25, 0xffff, 1);
-			obs_properties_add_int(props, S_SOURCE_CY, T_SOURCE_CY,
-					       25, 0xffff, 1);
-			obs_properties_add_float_slider(props, S_SPEED, T_SPEED,
-							0.10f, 1000.f, 0.25);
-			obs_properties_add_float_slider(props, S_SCALE, T_SCALE,
-							0.10f, 10.f, 0.25);
-			obs_properties_add_button(props, S_RESET, T_RESET,
-						  reset_logo_position);
-			obs_property_set_modified_callback(
-				obs_properties_get(props, "file"),
-				image_path_changed);
+	obs_properties_add_int(props, S_SOURCE_CX, T_SOURCE_CX, 25, 0xffff, 1);
+	obs_properties_add_int(props, S_SOURCE_CY, T_SOURCE_CY, 25, 0xffff, 1);
+	obs_properties_add_float_slider(props, S_SPEED, T_SPEED, 0.10f, 1000.f,
+					0.25);
+	obs_properties_add_float_slider(props, S_SCALE, T_SCALE, 0.10f, 10.f,
+					0.25);
+	obs_properties_add_button2(props, S_RESET, T_RESET, reset_logo_position,
+				   context);
+	obs_property_set_modified_callback(obs_properties_get(props, S_FILE),
+					   image_path_changed);
 
-			obs_property_set_modified_callback(
-				obs_properties_get(props, S_COLOR),
-				use_color_shift_changed);
+	obs_property_set_modified_callback(obs_properties_get(props, S_COLOR),
+					   use_color_shift_changed);
 
-			obs_property_set_visible(
-				obs_properties_get(props, "unload"), false);
+	obs_property_set_visible(obs_properties_get(props, "unload"), false);
 
-			return props;
-		}
-	}
-	return NULL;
+	return props;
 }
 
 static void *dvd_source_create(obs_data_t *settings, obs_source_t *source)
 {
 	struct dvd_source *context = bzalloc(sizeof(struct dvd_source));
 	context->source = source;
+	pthread_mutex_init(&context->shown_mutex, NULL);
+
+	/* The image source shares the settings, so it picks up the file */
 	context->logo_source = obs_source_create_private(
 		"image_source", SOURCE_NAME, settings);
+	context->scene = obs_scene_create_private(SCENE_NAME);
 #ifndef MAC_OS
-	context->color_filter = obs_source_create_private(
-		"color_filter", FILTER_NAME, settings);
-	obs_source_add_active_child(context->source, context->color_filter);
-	obs_source_filter_add(context->logo_source, context->color_filter);
+	/* The filter gets its own settings, it's only updated from the tick */
+	context->color_filter =
+		obs_source_create_private("color_filter", FILTER_NAME, NULL);
+	obs_source_filter_add(obs_scene_get_source(context->scene),
+			      context->color_filter);
 #endif
-
-	obs_source_add_active_child(context->source, context->logo_source);
-
-	obs_source_update(context->logo_source, settings);
-	dvd_source_update(context, settings);
 
 	context->pos.x = 0;
 	context->pos.y = 0;
 	context->d_x = 1;
 	context->d_y = 1;
-	context->use_image = true;
+
+	dvd_source_update(context, settings);
 	return context;
 }
 
 static void dvd_enum_sources(void *data, obs_source_enum_proc_t cb, void *param)
 {
 	struct dvd_source *context = data;
-	cb(context->source, context->logo_source, param);
-	obs_source_t *target =
-		obs_weak_source_get_source(context->other_source);
-	if (target) {
-		cb(context->source, target, param);
-		obs_source_release(target);
-	}
+	/* The scene takes care of its items */
+	cb(context->source, obs_scene_get_source(context->scene), param);
 }
 
 static struct obs_source_info dvd_source_info = {

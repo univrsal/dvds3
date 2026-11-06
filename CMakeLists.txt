@@ -1,141 +1,68 @@
-cmake_minimum_required(VERSION 3.17)
-project(dvd-screensaver VERSION 1.1.0)
+cmake_minimum_required(VERSION 3.28...3.30)
 
-set(PLUGIN_AUTHOR "univrsal")
-set(PLUGIN_GIT dvds3)
-set(LINUX_MAINTAINER_EMAIL "uni@vrsal.xyz")
-set(MACOS_BUNDLEID "xyz.vrsal.dvds3")
+# dvd.c uses some API that is deprecated in newer OBS versions, don't fail the build over it
+set(CMAKE_COMPILE_WARNING_AS_ERROR OFF)
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/common/bootstrap.cmake" NO_POLICY_SCOPE)
 
-set(CMAKE_PREFIX_PATH "${QTDIR}")
-set(CMAKE_INCLUDE_CURRENT_DIR TRUE)
-set(CMAKE_INCLUDE_CURRENT_DIR ON)
-#set(CMAKE_AUTOMOC ON)
-#set(CMAKE_AUTOUIC ON)
-set(CMAKE_CXX_STANDARD 14)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+project(${_name} VERSION ${_version})
 
-option(LOCAL_INSTALLATION "Whether to install for the current user (default: OFF)" OFF)
-option(GLOBAL_INSTALLATION "Whether to install for all users (default: OFF)" OFF)
+option(ENABLE_FRONTEND_API "Use obs-frontend-api for UI functionality" OFF)
+option(ENABLE_QT "Use Qt functionality" OFF)
+option(INCLUDE_SIMDE "Include simde (needed for the libobs headers of the Ubuntu PPA)" OFF)
+option(LOCAL_INSTALLATION "Copy the plugin into the OBS Studio plugin folder in the home directory (Linux only)" OFF)
 
-include(${CMAKE_SOURCE_DIR}/cmake/ObsPluginHelpers.cmake)
-if (MSVC OR APPLE)
-    set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake")
-    include(${CMAKE_SOURCE_DIR}/cmake/FindLibObs.cmake)
+include(compilerconfig)
+include(defaults)
+include(helpers)
+
+add_library(${CMAKE_PROJECT_NAME} MODULE)
+
+if(INCLUDE_SIMDE)
+  include(FetchContent)
+  FetchContent_Declare(simde GIT_REPOSITORY https://github.com/simd-everywhere/simde.git GIT_TAG v0.8.2)
+  FetchContent_MakeAvailable(simde)
+  target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${simde_SOURCE_DIR})
 endif()
 
-configure_file(
-    package/installer-macOS.pkgproj.in
-    ../package/installer-macOS.pkgproj
-)
-configure_file(
-    package/installer-Windows.iss.in
-    ../package/installer-Windows.iss
-)
-configure_file(
-    package/README.txt.in
-    ../package/README.txt
-)
+find_package(libobs REQUIRED)
+target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE OBS::libobs)
 
-if(MSVC)
-    set(dvd-screensaver_PLATFORM_DEPS
-        ${W32_PTHREADS_LIB})
-endif()
-
-if(UNIX AND NOT APPLE)
-    add_definitions(-DUNIX=1)
-    set(LIBOBS_LIB "libobs")
-    set(OBS_FRONTEND_LIB "obs-frontend-api")
-endif()
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE src/dvd.c)
 
 if(APPLE)
-    add_definitions(-DMAC_OS=1)
+  target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE MAC_OS=1)
+elseif(UNIX)
+  target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE UNIX=1)
+  # Needed for the runtime lookup of the image functions in dvd.c
+  target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_DL_LIBS})
 endif()
 
-find_package(LibObs REQUIRED)
-#find_package(Qt5 REQUIRED COMPONENTS Core Widgets)
-
-set(dvd-screensaver_SOURCES
-    src/dvd.c)
-
-add_library(dvd-screensaver MODULE
-    ${dvd-screensaver_SOURCES})
-
-if (OBS_FRONTEND_INCLUDE)
-    include_directories(${OBS_FRONTEND_INCLUDE})
-endif()
-
-include_directories(
-    "${LIBOBS_INCLUDE_DIR}/../UI/obs-frontend-api"
-    ${LIBOBS_INCLUDE_DIR}
-#    ${Qt5Core_INCLUDES}
-#    ${Qt5Widgets_INCLUDES}
-)
-
-target_link_libraries(dvd-screensaver
-    ${LIBOBS_LIB}
-#    ${OBS_FRONTEND_LIB}
-#    Qt5::Core
-#    Qt5::Widgets
-    ${dvd-screensaver_PLATFORM_DEPS})
-
-
-# --- Windows-specific build settings and tasks ---
-if(WIN32)
-    if(NOT DEFINED OBS_FRONTEND_LIB)
-        set(OBS_FRONTEND_LIB "OBS_FRONTEND_LIB-NOTFOUND" CACHE FILEPATH "OBS frontend library")
-        message(FATAL_ERROR "Could not find OBS Frontend API\'s library !")
-    endif()
-
-    # Enable Multicore Builds and disable FH4 (to not depend on VCRUNTIME140_1.DLL when building with VS2019)
-    if (MSVC)
-        add_definitions(/MP /d2FH4-)
-    endif()
-
-    include_directories(
-        "${LIBOBS_INCLUDE_DIR}"
-    )
-
-    install_external_plugin_with_data(${CMAKE_PROJECT_NAME} "data")
-endif()
-
-if(UNIX AND NOT APPLE)
-    include(GNUInstallDirs)
-
-    set_target_properties(dvd-screensaver PROPERTIES PREFIX "")
-
-    if (LOCAL_INSTALLATION)
-        # Installs into home directory
-        install(TARGETS ${CMAKE_PROJECT_NAME}
-            LIBRARY DESTINATION "$ENV{HOME}/.config/obs-studio/plugins/${CMAKE_PROJECT_NAME}/bin/${OBS_ARCH_NAME}")
-
-        install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/data
-            DESTINATION "$ENV{HOME}/.config/obs-studio/plugins/${CMAKE_PROJECT_NAME}/")
-    elseif(GLOBAL_INSTALLATION)
-        # For *.deb installer
-        install(TARGETS ${CMAKE_PROJECT_NAME}
-            LIBRARY DESTINATION "/usr/lib/obs-plugins") # Ubuntu apparently doesn't know the correct path
-        
-        file(GLOB locale_files data/locale/*.ini)
-        file(GLOB other_files data/*.*)
-        
-        install(FILES ${locale_files}
-            DESTINATION "${CMAKE_INSTALL_FULL_DATAROOTDIR}/obs/obs-plugins/${CMAKE_PROJECT_NAME}/locale")
-        install(FILES ${other_files}
-		    DESTINATION "${CMAKE_INSTALL_FULL_DATAROOTDIR}/obs/obs-plugins/${CMAKE_PROJECT_NAME}")
+if(LOCAL_INSTALLATION AND UNIX AND NOT APPLE)
+  # Installs into home directory, OBS Studio 33 moved user plugins from
+  # $XDG_CONFIG_HOME/obs-studio/plugins/<plugin>/bin/64bit to $XDG_DATA_HOME/obs-studio/plugins/<plugin>
+  if(libobs_VERSION VERSION_GREATER_EQUAL 33)
+    if(DEFINED ENV{XDG_DATA_HOME})
+      set(_local_plugin_dir "$ENV{XDG_DATA_HOME}/obs-studio/plugins/${CMAKE_PROJECT_NAME}")
     else()
-        # For *.zip binary
-        install(TARGETS ${CMAKE_PROJECT_NAME}
-            LIBRARY DESTINATION "${CMAKE_PROJECT_NAME}/bin/${OBS_ARCH_NAME}")
+      set(_local_plugin_dir "$ENV{HOME}/.local/share/obs-studio/plugins/${CMAKE_PROJECT_NAME}")
+    endif()
+    set(_local_binary_dir "${_local_plugin_dir}")
+  else()
+    set(_local_plugin_dir "$ENV{HOME}/.config/obs-studio/plugins/${CMAKE_PROJECT_NAME}")
+    set(_local_binary_dir "${_local_plugin_dir}/bin/64bit")
+  endif()
+  # Read by the CI build script to package the local installation
+  set(LOCAL_PLUGIN_DIR "${_local_plugin_dir}" CACHE INTERNAL "")
 
-        install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/data
-            DESTINATION "${CMAKE_PROJECT_NAME}")
-        
-        install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/package/README.txt"
-            DESTINATION "${CMAKE_PROJECT_NAME}")
-    endif()
-elseif(APPLE)
-    if(NOT DEFINED OBS_FRONTEND_LIB)
-        set(OBS_FRONTEND_LIB "OBS_FRONTEND_LIB-NOTFOUND" CACHE FILEPATH "OBS frontend library")
-        message(FATAL_ERROR "Could not find OBS Frontend API\'s library !")
-    endif()
+  add_custom_command(
+    TARGET ${CMAKE_PROJECT_NAME}
+    POST_BUILD
+    # Copy to obs-studio dev environment for immediate testing
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${_local_binary_dir}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${_local_plugin_dir}/data"
+    COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE:${CMAKE_PROJECT_NAME}>" "${_local_binary_dir}"
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${PROJECT_SOURCE_DIR}/data" "${_local_plugin_dir}/data"
+  )
 endif()
+
+set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_name})

@@ -1,30 +1,42 @@
 #define MyAppName "@CMAKE_PROJECT_NAME@"
 #define MyAppVersion "@CMAKE_PROJECT_VERSION@"
 #define MyAppPublisher "@PLUGIN_AUTHOR@"
-#define MyAppURL "https://github.com/univrsal/@PLUGIN_GIT@"
+#define MyAppURL "@PLUGIN_WEBSITE@"
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application.
 ; Do not use the same AppId value in installers for other applications.
 ; (To generate a new GUID, click Tools | Generate GUID inside the IDE.)
-AppId={{44b785ed-eef5-4b73-bef0-42ee3493c021}
+AppId={{@UUID_APP@}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
-DefaultDirName={code:GetDirName}
+DefaultDirName={commonappdata}\obs-studio\plugins\{#MyAppName}
+; Older versions were installed into the OBS install directory, don't reuse that directory on updates
+UsePreviousAppDir=no
 DefaultGroupName={#MyAppName}
-OutputBaseFilename={#MyAppName}-{#MyAppVersion}-Windows-Installer
+OutputBaseFilename={#MyAppName}-{#MyAppVersion}-windows-x64-Installer
 Compression=lzma
 SolidCompression=yes
+DirExistsWarning=no
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+[InstallDelete]
+; Remove files of older versions from the legacy plugin locations, OBS Studio 34 won't load plugins from there
+Type: files; Name: "{code:GetObsDir}\obs-plugins\64bit\{#MyAppName}.dll"
+Type: files; Name: "{code:GetObsDir}\obs-plugins\64bit\{#MyAppName}.pdb"
+Type: files; Name: "{code:GetObsDir}\obs-plugins\32bit\{#MyAppName}.dll"
+Type: files; Name: "{code:GetObsDir}\obs-plugins\32bit\{#MyAppName}.pdb"
+Type: filesandordirs; Name: "{code:GetObsDir}\data\obs-plugins\{#MyAppName}"
+Type: filesandordirs; Name: "{app}\bin"
+
 [Files]
-Source: "..\release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\release\Package\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\COPYING.txt"; Flags: dontcopy
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
@@ -38,8 +50,8 @@ var
   GPLText: AnsiString;
   Page: TOutputMsgMemoWizardPage;
 begin
-  ExtractTemporaryFile('LICENSE');
-  LoadStringFromFile(ExpandConstant('{tmp}\LICENSE'), GPLText);
+  ExtractTemporaryFile('COPYING.txt');
+  LoadStringFromFile(ExpandConstant('{tmp}\COPYING.txt'), GPLText);
   Page := CreateOutputMsgMemoPage(wpWelcome,
     'License Information', 'Please review the license terms before installing {#MyAppName}',
     'Press Page Down to see the rest of the agreement. Once you are aware of your rights, click Next to continue.',
@@ -49,13 +61,13 @@ end;
 
 // credit where it's due :
 // following function come from https://github.com/Xaymar/obs-studio_amf-encoder-plugin/blob/master/%23Resources/Installer.in.iss#L45
-function GetDirName(Value: string): string;
+function GetObsDir(Value: string): string;
 var
   InstallPath: string;
 begin
   // initialize default path, which will be returned when the following registry
   // key queries fail due to missing keys or for some different reason
-  Result := '{pf}\obs-studio';
+  Result := ExpandConstant('{autopf}\obs-studio');
   // query the first registry value; if this succeeds, return the obtained value
   if RegQueryStringValue(HKLM32, 'SOFTWARE\OBS Studio', '', InstallPath) then
     Result := InstallPath
